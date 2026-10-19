@@ -7,12 +7,12 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
@@ -33,27 +33,38 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Entry point to OSMWrangle for converting spatial features extracted from OpenStreetMap files (either XML or PBF formats) into CSV records and/or RDF triples.
  * <p>
  * Execution command over JVM:
  * <pre>
- * java -cp target/poi-1.0.0-SNAPSHOT.jar io.github.qmjy.poi.Extractor &lt;filePath&gt; &lt;fileType&gt;
+ * java -cp target/poi-1.0.0-SNAPSHOT.jar io.github.qmjy.poi.Extractor &lt;filePath&gt; &lt;fileType&gt; [outputType]
  * </pre>
  * Arguments:
  * <ol>
  *     <li>filePath - path of the OSM file to be parsed, e.g. ./test/data/latest.osm.pbf</li>
  *     <li>fileType - format of that file: OSM_PBF or OSM_XML</li>
+ *     <li>outputType - optional kind of output: 0 = CSV + SQLite (default), 1 = SQLite only, 2 = CSV only</li>
  * </ol>
  * The runtime data path is the directory of the input file: results are written next to it,
  * whereas the temporary directory created underneath it is removed once the process terminates.
- * CAUTION! Static settings (attribute mapping file, SQLite output, etc.) are read from the classpath resource
+ * CAUTION! Static settings (attribute mapping file, etc.) are read from the classpath resource
  * application.properties; no external configuration file is used any more.
+ * The output type is no longer part of that configuration: it is supplied on the command line.
  *
  * @author Kostas Patroumpas
  * @version 2.2
  */
 public class Extractor {
+
+    /**
+     * SLF4J logger for this class.
+     */
+    private static final Logger LOGGER = LoggerFactory.getLogger(Extractor.class);
+
 
     static Assistant myAssistant;
     static int sourceSRID;                              //Source CRS according to EPSG
@@ -69,7 +80,7 @@ public class Extractor {
 
         boolean failure = true;                        //Indicates whether transformation has failed to conclude
 
-        //CAUTION! Two arguments are now expected: <filePath> <fileType>
+        //CAUTION! Two arguments are mandatory (<filePath> <fileType>); the 3rd one (<outputType>) is optional
         if (args.length >= 2) {
 
             String[] runtimeArgs;
@@ -77,7 +88,7 @@ public class Extractor {
                 //Runtime settings supplied as key-value arguments (positional form is also accepted)
                 runtimeArgs = parseArguments(args);
             } catch (IllegalArgumentException iae) {
-                System.err.println(iae.getMessage());
+                LOGGER.error(iae.getMessage());
                 printUsage();
                 System.exit(1);          //Execution terminated abnormally
                 return;
@@ -85,11 +96,12 @@ public class Extractor {
 
             String filePath = runtimeArgs[0];           //1st argument: path of the OSM file to be parsed
             String fileType = runtimeArgs[1];           //2nd argument: format of that file (OSM_PBF or OSM_XML)
+            String outputType = runtimeArgs[2];         //3rd (optional) argument: kind of output (0: CSV + SQLite, 1: SQLite, 2: CSV)
 
             //Check that the input file actually exists
             File inputFile = new File(filePath);
             if (!inputFile.isFile()) {
-                System.err.println("Input file not found: " + filePath);
+                LOGGER.error("Input file not found: {}", filePath);
                 printUsage();
                 System.exit(1);          //Execution terminated abnormally
                 return;
@@ -98,9 +110,9 @@ public class Extractor {
             //Configuration settings for the transformation: built-in settings combined with the runtime arguments
             Configuration currentConfig;
             try {
-                currentConfig = new Configuration(filePath, fileType);
+                currentConfig = new Configuration(filePath, fileType, outputType);
             } catch (IllegalArgumentException iae) {
-                System.err.println(iae.getMessage());
+                LOGGER.error(iae.getMessage());
                 printUsage();
                 System.exit(1);          //Execution terminated abnormally
                 return;
@@ -129,7 +141,7 @@ public class Extractor {
             outFile = currentConfig.outputDir + FilenameUtils.getBaseName(inFile) + ".nt";     //CAUTION! Output file for RDF triples is in NT; another one will be always created in CSV format
 
             sourceSRID = 0;                                   //Non-specified, so...
-            System.out.println(Constants.WGS84_PROJECTION);   //... all features are assumed in WGS84 lon/lat coordinates
+            LOGGER.info(Constants.WGS84_PROJECTION);   //... all features are assumed in WGS84 lon/lat coordinates
 
             long start = System.currentTimeMillis();
             try {
@@ -153,16 +165,16 @@ public class Extractor {
                 //Cleanup intermediate files and remove the temporary directory: it must not be retained after the transformation
                 discardTemporaryDirectory(currentConfig.tmpDir, currentConfig.dataPath);
                 if (failure) {
-                    System.out.println(myAssistant.getGMTime() + String.format(" Transformation process failed. Elapsed time: %d ms.", elapsed));
+                    LOGGER.error("Transformation process failed. Elapsed time: {} ms.", elapsed);
                     System.exit(1);          //Execution failed in at least one task
                 } else {
-                    System.out.println(myAssistant.getGMTime() + String.format(" Transformation process concluded successfully in %d ms.", elapsed));
-                    System.out.println("Results written in this directory:" + currentConfig.outputDir);
+                    LOGGER.info("Transformation process concluded successfully in {} ms.", elapsed);
+                    LOGGER.info("Results written in this directory: {}", currentConfig.outputDir);
                     System.exit(0);          //Execution completed successfully
                 }
             }
         } else {
-            System.err.println(Constants.INCORRECT_CONFIG);
+            LOGGER.error(Constants.INCORRECT_CONFIG);
             printUsage();
             System.exit(1);          //Execution terminated abnormally
         }
@@ -192,7 +204,7 @@ public class Extractor {
             //Safety guard: never remove the data path itself (nor any of its parent directories)
             if (tmp.equals(data) || data.startsWith(tmp)) {
                 myAssistant.cleanupFilesInDir(tmpDir);       //Only clear intermediate files
-                System.out.println("Temporary directory coincides with the data path; contents cleared but directory retained: " + tmp);
+                LOGGER.info("Temporary directory coincides with the data path; contents cleared but directory retained: {}", tmp);
                 return;
             }
 
@@ -209,12 +221,12 @@ public class Extractor {
             }
 
             if (!Files.exists(tmp))
-                System.out.println("Temporary directory removed: " + tmp);
+                LOGGER.info("Temporary directory removed: {}", tmp);
             else
-                System.out.println("Temporary directory could not be removed: " + tmp);
+                LOGGER.warn("Temporary directory could not be removed: {}", tmp);
 
         } catch (Exception e) {
-            System.out.println("Could not remove the temporary directory " + tmpDir + ": " + e.getMessage());
+            LOGGER.warn("Could not remove the temporary directory {}: {}", tmpDir, e.getMessage());
         }
     }
 
@@ -229,7 +241,7 @@ public class Extractor {
             Path path = Paths.get(dir);
             if (!Files.isDirectory(path)) {
                 Files.createDirectories(path);
-                System.out.println("Created " + role + " directory: " + path);
+                LOGGER.info("Created {} directory: {}", role, path);
             }
         } catch (Exception e) {
             ExceptionHandler.abort(e, "Cannot create the " + role + " directory: " + dir);
@@ -240,20 +252,21 @@ public class Extractor {
      * Parses the arguments supplied on the command line.
      * Both notations are accepted:
      * <ul>
-     *     <li>positional: {@code <filePath> <fileType>}</li>
-     *     <li>key-value: {@code filePath=... fileType=...} (order does not matter)</li>
+     *     <li>positional: {@code <filePath> <fileType> [outputType]}</li>
+     *     <li>key-value: {@code filePath=... fileType=... [outputType=...]} (order does not matter)</li>
      * </ul>
      * CAUTION! The data path is no longer an argument: the directory holding the input file is used instead.
      * Should a dataPath argument still be supplied (e.g. by an older script), it is ignored with a warning.
      *
      * @param args Arguments as given on the command line.
-     * @return An array with the two runtime settings: input file path and its format.
+     * @return An array with the runtime settings: input file path, its format, and the output type (may be {@code null} for the default).
      * @throws IllegalArgumentException In case of missing or unknown arguments.
      */
     private static String[] parseArguments(String[] args) {
 
         String filePath = null;
         String fileType = null;
+        String outputType = null;
 
         for (String arg : args) {
             String token = (arg == null) ? "" : arg.trim();
@@ -267,38 +280,47 @@ public class Extractor {
                 switch (key) {
                     case "filePath", "inputFile" -> filePath = value;
                     case "fileType", "inputFormat" -> fileType = value;
-                    case "dataPath" -> System.err.println("Argument dataPath is obsolete and will be ignored: "
+                    case "outputType", "output" -> outputType = value;
+                    case "dataPath" -> LOGGER.warn("Argument dataPath is obsolete and will be ignored: "
                             + "the directory of the input file is always used as the data path.");
                     default -> throw new IllegalArgumentException("Unknown argument: " + key
-                            + ". Expected keys: filePath, fileType.");
+                            + ". Expected keys: filePath, fileType, outputType.");
                 }
-            } else {                             //Positional form, in the order filePath, fileType
+            } else {                             //Positional form, in the order filePath, fileType, outputType
                 if (filePath == null)
                     filePath = token;
                 else if (fileType == null)
                     fileType = token;
+                else if (outputType == null)
+                    outputType = token;
                 else
-                    System.err.println("Argument is obsolete and will be ignored: " + token
-                            + " (the directory of the input file is always used as the data path).");
+                    LOGGER.warn("Argument is obsolete and will be ignored: {} (only <filePath> <fileType> [outputType] are supported).", token);
             }
         }
 
         if (filePath == null || fileType == null) {
             throw new IllegalArgumentException("Incomplete arguments: both filePath and fileType are required.");
         }
-        return new String[]{filePath, fileType};
+        return new String[]{filePath, fileType, outputType};
     }
 
     /**
      * Prints the expected syntax of the command line.
      */
     private static void printUsage() {
-        System.err.println("Usage: java -cp <classpath> " + Extractor.class.getName() + " <filePath> <fileType>");
-        System.err.println("   or: java -cp <classpath> " + Extractor.class.getName() + " filePath=... fileType=...");
-        System.err.println("  filePath : Path to the OSM file to be parsed, e.g. ./test/data/latest.osm.pbf");
-        System.err.println("  fileType : Format of that file, either " + Configuration.FORMAT_OSM_PBF + " or " + Configuration.FORMAT_OSM_XML);
-        System.err.println("  (The directory of the input file is used as the data path: results are written next to the input file,");
-        System.err.println("   whereas the temporary directory is removed once the transformation is over.)");
-        System.err.println("  (Settings such as the attribute mapping file and the SQLite output are read from the embedded " + Configuration.CONFIG_RESOURCE + ")");
+        LOGGER.error("""
+                        Usage: java -cp <classpath> {} <filePath> <fileType> [outputType]
+                           or: java -cp <classpath> {} filePath=... fileType=... [outputType=...]
+                          filePath   : Path to the OSM file to be parsed, e.g. ./test/data/latest.osm.pbf
+                          fileType   : Format of that file, either {} or {}
+                          outputType : Optional, kind of output to produce (default 0):
+                                       0 = .csv and SQLite database file (*.poi)   [default]
+                                       1 = SQLite database file (*.poi) only
+                                       2 = .csv file only
+                          (The directory of the input file is used as the data path: results are written next to the input file,
+                           whereas the temporary directory is removed once the transformation is over.)
+                          (Other settings, such as the attribute mapping file, are read from the embedded {})""",
+                Extractor.class.getName(), Extractor.class.getName(),
+                Configuration.FORMAT_OSM_PBF, Configuration.FORMAT_OSM_XML, Configuration.CONFIG_RESOURCE);
     }
 }

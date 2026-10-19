@@ -18,6 +18,9 @@
  */
 package io.github.qmjy.poi.utils;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Handles exceptions raised by TripleGeo utilities. Issuing exit codes to the operation system.
  *
@@ -26,6 +29,10 @@ package io.github.qmjy.poi.utils;
  */
 public class ExceptionHandler {
 
+    /** SLF4J logger for this class. */
+    private static final Logger LOGGER = LoggerFactory.getLogger(ExceptionHandler.class);
+
+
     /**
      * Prints warnings regarding issues raised during transformation.
      *
@@ -33,8 +40,7 @@ public class ExceptionHandler {
      * @param msg Message to be issued along with the warning.
      */
     public static void warn(Exception e, String msg) {
-        e.printStackTrace();
-        System.out.println(msg);
+        LOGGER.warn(msg, e);
     }
 
     /**
@@ -44,8 +50,7 @@ public class ExceptionHandler {
      * @param msg Message to be issued along with the error.
      */
     public static void abort(Exception e, String msg) {
-        e.printStackTrace();
-        System.err.println("Transformation process terminated abnormally. " + msg);
+        LOGGER.error("Transformation process terminated abnormally. {}", msg, e);
         System.exit(1);                              //Issue signal to the operation system that execution terminated abnormally
     }
 }

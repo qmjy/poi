@@ -28,6 +28,8 @@ import java.util.Set;
 import org.apache.commons.io.FilenameUtils;
 
 import io.github.qmjy.poi.utils.ExceptionHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Given a YAML file with OSM tags and their correspondence to categories/subcategories, it creates a representation of a hierarchical classification scheme.
@@ -36,6 +38,10 @@ import io.github.qmjy.poi.utils.ExceptionHandler;
  * @version 2.0
  */
 public class OSMClassification {
+
+    /** SLF4J logger for this class. */
+    private static final Logger LOGGER = LoggerFactory.getLogger(OSMClassification.class);
+
 
 	OSMFilterFileParser filterFileParser;                //Parser for a YAML file containing OSM tags...
 	private List<OSMFilter> filters;                     //...specifying filters for assigning categories to OSM features
@@ -60,6 +66,13 @@ public class OSMClassification {
 	 * @return  Path to the intermediate classification file, as will be used during transformation.
 	 */
 	public String apply() {
+	      //No classification scheme configured: all valid OSM features will be extracted
+	      if ((classificationSpec == null) || classificationSpec.isBlank()) {
+		      tags = null;
+		      LOGGER.info("No classification scheme configured. All valid OSM features will be extracted.");
+		      return null;
+	      }
+
 	      //Get filter definitions over combinations of OSM tags in order to determine POI categories
 	      try {
 		      //Read YML file from configuration settings containing assignment of OSM tags to categories
@@ -68,7 +81,7 @@ public class OSMClassification {
 		      if (filters == null)
 		      {
 		    	  tags = null;               //No tags specified for filtering, so all OSM features should be extracted
-		    	  System.out.println("No classification scheme will be used in filtering. All valid OSM features will be extracted.");
+		    	  LOGGER.info("No classification scheme will be used in filtering. All valid OSM features will be extracted.");
 		    	  return null;
 //		    	  throw new FileNotFoundException(classificationSpec);
 		      }

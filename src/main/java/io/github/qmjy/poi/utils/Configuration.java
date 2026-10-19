@@ -27,7 +27,10 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Locale;
 import java.util.Properties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Configuration of the transformation of geospatial features into CSV records and (optionally) RDF triples.
@@ -38,6 +41,7 @@ import java.util.Properties;
  * <ol>
  *     <li>inputFilePath - path of the OSM file to be parsed</li>
  *     <li>inputFileType - format of that file: OSM_PBF or OSM_XML</li>
+ *     <li>outputType - optional kind of output to produce: 0 = CSV + SQLite (default), 1 = SQLite only, 2 = CSV only</li>
  * </ol>
  * The runtime data path is no longer an argument: it is the directory that holds the input file.
  * Output files are written directly into that directory, whereas the temporary directory is created
@@ -47,6 +51,10 @@ import java.util.Properties;
  * @version 2.2
  */
 public final class Configuration {
+
+    /** SLF4J logger for this class. */
+    private static final Logger LOGGER = LoggerFactory.getLogger(Configuration.class);
+
 
     /**
      * Classpath location of the built-in configuration file.
@@ -62,6 +70,21 @@ public final class Configuration {
      * Supported input format: OpenStreetMap data in XML format.
      */
     public static final String FORMAT_OSM_XML = "OSM_XML";
+
+    /**
+     * Output type: both a .csv file and an SQLite database file (*.poi). This is the default.
+     */
+    public static final int OUTPUT_CSV_AND_SQLITE = 0;
+
+    /**
+     * Output type: only the SQLite database file (*.poi).
+     */
+    public static final int OUTPUT_SQLITE = 1;
+
+    /**
+     * Output type: only the .csv file.
+     */
+    public static final int OUTPUT_CSV = 2;
 
     /**
      * Default name of the directory (relative to the runtime data path) that holds intermediate files.
@@ -210,10 +233,16 @@ public final class Configuration {
     public boolean keepUnnamedEntities = false;
 
     /**
-     * Indicates whether the extracted records will also be written directly into an SQLite database file ending with ".poi".
-     * This setting is read from {@value #CONFIG_RESOURCE}; it is not supplied as an external input any more.
+     * Kind of output files emitted by the transformation. Supported values:
+     * <ul>
+     *     <li>{@link #OUTPUT_CSV_AND_SQLITE} (0, default): both a .csv file and an SQLite database file (*.poi)</li>
+     *     <li>{@link #OUTPUT_SQLITE} (1): only the SQLite database file (*.poi)</li>
+     *     <li>{@link #OUTPUT_CSV} (2): only the .csv file</li>
+     * </ul>
+     * CAUTION! This setting is supplied as the (optional) 3rd command-line argument;
+     * it is no longer read from the embedded configuration {@value #CONFIG_RESOURCE}.
      */
-    public boolean sqliteOutput = true;
+    public int outputType = OUTPUT_CSV_AND_SQLITE;
 
 
     /**
@@ -276,15 +305,89 @@ public final class Configuration {
      * All static parameters are loaded from the built-in classpath resource {@value #CONFIG_RESOURCE},
      * then they are combined with the runtime arguments provided on the command line.
      * CAUTION! The data path is no longer supplied as an argument: the directory holding the input file is used instead.
+     * The output type defaults to {@link #OUTPUT_CSV_AND_SQLITE}.
      *
      * @param inputFilePath Path to the OSM file to be parsed (1st command-line argument).
      * @param inputFileType Format of that file, either OSM_PBF or OSM_XML (2nd command-line argument).
      */
     public Configuration(String inputFilePath, String inputFileType) {
 
+        this(inputFilePath, inputFileType, null);
+    }
+
+    /**
+     * Constructor of a Configuration object.
+     * All static parameters are loaded from the built-in classpath resource {@value #CONFIG_RESOURCE},
+     * then they are combined with the runtime arguments provided on the command line.
+     * CAUTION! The data path is no longer supplied as an argument: the directory holding the input file is used instead.
+     *
+     * @param inputFilePath Path to the OSM file to be parsed (1st command-line argument).
+     * @param inputFileType Format of that file, either OSM_PBF or OSM_XML (2nd command-line argument).
+     * @param outputType    Kind of output to produce (optional 3rd command-line argument):
+     *                      {@code 0} for CSV + SQLite (default), {@code 1} for SQLite only, {@code 2} for CSV only.
+     */
+    public Configuration(String inputFilePath, String inputFileType, String outputType) {
+
         myAssistant = new Assistant();
         initializeParameters(loadEmbeddedConfiguration());
         applyRuntimeArguments(inputFilePath, inputFileType);
+        applyOutputType(outputType);
+    }
+
+    /**
+     * Indicates whether a .csv output file is to be produced.
+     *
+     * @return {@code true} for output types {@link #OUTPUT_CSV_AND_SQLITE} and {@link #OUTPUT_CSV}.
+     */
+    public boolean isCsvOutput() {
+        return (outputType == OUTPUT_CSV_AND_SQLITE) || (outputType == OUTPUT_CSV);
+    }
+
+    /**
+     * Indicates whether an SQLite database file (*.poi) is to be produced.
+     *
+     * @return {@code true} for output types {@link #OUTPUT_CSV_AND_SQLITE} and {@link #OUTPUT_SQLITE}.
+     */
+    public boolean isSqliteOutput() {
+        return (outputType == OUTPUT_CSV_AND_SQLITE) || (outputType == OUTPUT_SQLITE);
+    }
+
+    /**
+     * Provides a human-readable description of the configured output type.
+     *
+     * @return Description of the output type, e.g. "CSV + SQLite (0)".
+     */
+    public String outputTypeLabel() {
+        return switch (outputType) {
+            case OUTPUT_SQLITE -> "SQLite only (1)";
+            case OUTPUT_CSV -> "CSV only (2)";
+            default -> "CSV + SQLite (0)";
+        };
+    }
+
+    /**
+     * Applies the output type supplied on the command line.
+     * Besides the numeric codes, a few convenient aliases are also accepted (e.g. {@code SQLITE}, {@code CSV}, {@code BOTH}).
+     *
+     * @param outputTypeArgument Value of the (optional) 3rd command-line argument; if empty, the default output type is applied.
+     * @throws IllegalArgumentException In case of an unsupported output type.
+     */
+    private void applyOutputType(String outputTypeArgument) {
+
+        String value = (outputTypeArgument == null) ? "" : outputTypeArgument.trim();
+        if (value.isEmpty()) {
+            outputType = OUTPUT_CSV_AND_SQLITE;
+        } else {
+            switch (value.toUpperCase(Locale.ROOT)) {
+                case "0", "CSV+SQLITE", "SQLITE+CSV", "BOTH", "ALL" -> outputType = OUTPUT_CSV_AND_SQLITE;
+                case "1", "SQLITE", "POI", "DB" -> outputType = OUTPUT_SQLITE;
+                case "2", "CSV" -> outputType = OUTPUT_CSV;
+                default -> throw new IllegalArgumentException("Unsupported output type: " + outputTypeArgument
+                        + ". Supported values: 0 (CSV + SQLite, default), 1 (SQLite only), 2 (CSV only).");
+            }
+        }
+
+        LOGGER.info("Output type: " + outputTypeLabel());
     }
 
     /**
@@ -535,10 +638,8 @@ public final class Configuration {
             keepUnnamedEntities = Boolean.parseBoolean(properties.getProperty("keepUnnamedEntities").trim());
         }
 
-        //CUSTOM: Indicates whether the extracted records will also be written directly into an SQLite database file (*.poi)
-        if ((properties.containsKey("sqliteOutput")) && (!myAssistant.isNullOrEmpty(properties.getProperty("sqliteOutput").trim()))) {
-            sqliteOutput = Boolean.parseBoolean(properties.getProperty("sqliteOutput").trim());
-        }
+        //CAUTION! The output type (CSV / SQLite) is no longer read from the embedded configuration:
+        //it is supplied as the (optional) 3rd command-line argument, see applyOutputType(String).
 
         //Encoding of data values
         encoding = StandardCharsets.UTF_8.name();                   //Default encoding
@@ -546,11 +647,11 @@ public final class Configuration {
             if (Charset.isSupported(properties.getProperty("encoding").trim()))
                 encoding = Charset.forName(properties.getProperty("encoding").trim()).name();
             else
-                System.err.println("Specified encoding " + properties.getProperty("encoding").trim() + " is not recognized.");
+                LOGGER.warn("Specified encoding {} is not recognized. Utilizing default encoding: {}", properties.getProperty("encoding").trim(), encoding);
         } else
-            System.out.print("No encoding specified. Utilizing default ");
+            LOGGER.debug("No encoding specified. Utilizing default encoding: {}", encoding);
 
-        System.out.println("Encoding: " + encoding);
+        LOGGER.info("Encoding: {}", encoding);
 
         //Spatial reference system transformation properties
         if (!myAssistant.isNullOrEmpty(properties.getProperty("sourceCRS"))) {

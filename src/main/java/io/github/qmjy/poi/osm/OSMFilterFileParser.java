@@ -25,9 +25,15 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 public class OSMFilterFileParser {
+
+    /** SLF4J logger for this class. */
+    private static final Logger LOGGER = LoggerFactory.getLogger(OSMFilterFileParser.class);
+
     private static final int MAX_INDENT = 100; // Prevent stack overflow
     private final String filename;
     private Set<String> tags;
@@ -47,12 +53,12 @@ public class OSMFilterFileParser {
         try {
             lines = readOSMFilterFile(filename);
         } catch (IOException ex) {
-            System.out.println("Error: Reading filter file failed");
+            LOGGER.warn("Cannot read the filter file " + filename + ". No classification scheme will be used.", ex);
             return null;
         }
 
         if (lines == null) {
-            System.out.println("Error: Reading filter file failed");
+            LOGGER.warn("No filter definitions available for " + filename + ". No classification scheme will be used.");
             return null;
         }
 
@@ -162,7 +168,7 @@ public class OSMFilterFileParser {
         // Verify filters
         for (OSMFilter filter : filters) {
             if (!isOSMFilterValid(filter)) {
-                System.out.println("Error: Parsing filter file: There is at least one filter with key " + filter.getKey() + " without children that has no category name");
+                LOGGER.error("Error: Parsing filter file: There is at least one filter with key " + filter.getKey() + " without children that has no category name");
                 return null;
             }
         }
@@ -190,7 +196,7 @@ public class OSMFilterFileParser {
 
     // Display an error message with line number
     private void showError(String msg, int lineNumber) {
-        System.out.println("Error: Parsing filter file, line " + lineNumber + ": " + msg);
+        LOGGER.error("Error: Parsing filter file, line " + lineNumber + ": " + msg);
     }
 
     //Return the set of all identified categories

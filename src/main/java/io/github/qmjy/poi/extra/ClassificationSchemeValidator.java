@@ -25,6 +25,8 @@ import io.github.qmjy.poi.utils.Category;
 import io.github.qmjy.poi.utils.Classification;
 import io.github.qmjy.poi.utils.Constants;
 import io.github.qmjy.poi.utils.ExceptionHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Auxiliary utility to OSMWrangle for checking the validity a classification hierarchy stored in a file.
@@ -41,7 +43,11 @@ import io.github.qmjy.poi.utils.ExceptionHandler;
  * @author Kostas Patroumpas
  * @version 2.0
  */
-public class ClassificationSchemeValidator {  
+public class ClassificationSchemeValidator {
+
+    /** SLF4J logger for this class. */
+    private static final Logger LOGGER = LoggerFactory.getLogger(ClassificationSchemeValidator.class);
+  
 
 	static Assistant myAssistant;
 	static String classFile;         //Input file (CSV or YML) containing a user-specified classification scheme.
@@ -57,7 +63,7 @@ public class ClassificationSchemeValidator {
 	    
 	    if (args.length > 0)  {
 
-	    	System.out.println("This utility will validate the specified classification scheme. Once reconstructed, this hierarchy will be printed to standard output.");
+	    	LOGGER.info("This utility will validate the specified classification scheme. Once reconstructed, this hierarchy will be printed to standard output.");
 	    	
 	    	//Specify a configuration file with properties regarding classification hierarchy
 	    	classFile = args[0];          //Argument like "./test/OSM_POI_classification.yml"
@@ -66,13 +72,13 @@ public class ClassificationSchemeValidator {
 	    	if (args.length > 1)
 	    		flag = args[1];
 	    	else {
-	    		System.out.println("Which attribute is used in your dataset to refer to items in these classification hierarchy?\n- Specify TRUE if your data references to category names;\n- Specify FALSE (default) if your data references to category identifiers.");
+	    		LOGGER.info("Which attribute is used in your dataset to refer to items in these classification hierarchy?\n- Specify TRUE if your data references to category names;\n- Specify FALSE (default) if your data references to category identifiers.");
 	    		flag = System.console().readLine();    
 	    	}
 	    		
 	    	//Validate boolean parameter
 	    	if (flag.equalsIgnoreCase("true") || flag.equalsIgnoreCase("false")) {
-	    		classifyByName = Boolean.valueOf(flag);  
+	    		classifyByName = Boolean.parseBoolean(flag);
 	    	} 
 	    	else {
 	    		classifyByName = false;     //By default, assume that hierarchy is based on category identifiers
@@ -91,6 +97,7 @@ public class ClassificationSchemeValidator {
 					classification = new Classification(classFile, classifyByName);    //Parse input file with filters for assigning categories
 					
 					//Print the reconstructed classification scheme in the specified format
+					//CAUTION! This report is the program output, not a log message, so stdout is used intentionally
 					System.out.println("***************************CLASSIFICATION********************************");
 					if (outFormat.equalsIgnoreCase("csv")) {                   //Print reconstructed hierarchy in a CSV-like fashion with TAB delimiter
 						System.out.println("UUID" + "\t" + "ID" + "\t" + "CATEGORY" + "\t" + "PARENT_CATEGORY" + "\t" + "EMBEDDED_CATEGORY" + "\t" + "EMBEDDED_SCORE");
@@ -117,12 +124,12 @@ public class ClassificationSchemeValidator {
 	         ExceptionHandler.abort(e, "Failed to read classification hierarchy.");  
 	      } 
 		  finally {
-			  System.out.println(myAssistant.getGMTime() + " Classification hierarchy processed successfully!");
+			  LOGGER.info("Classification hierarchy processed successfully!");
 		  }
 	    }
 	    else {
-			System.err.println(Constants.INCORRECT_CLASSIFICATION); 
-			System.out.println("USAGE: java -cp target/triplegeo-2.0-SNAPSHOT.jar eu.slipo.athenarc.triplegeo.extra.ClassificationSchemeValidator <path-to-CSV-or-YML-classification-file> <boolean-flag> <output-CSV-or-YML-format>");
+			LOGGER.error(Constants.INCORRECT_CLASSIFICATION); 
+			LOGGER.error("USAGE: java -cp target/triplegeo-2.0-SNAPSHOT.jar eu.slipo.athenarc.triplegeo.extra.ClassificationSchemeValidator <path-to-CSV-or-YML-classification-file> <boolean-flag> <output-CSV-or-YML-format>");
 			System.exit(1);          //Execution terminated abnormally
 	    }
     }  

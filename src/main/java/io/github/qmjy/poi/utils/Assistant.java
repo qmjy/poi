@@ -23,7 +23,6 @@ import io.github.qmjy.poi.expression.Expr;
 import io.github.qmjy.poi.expression.ExprResolver;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
-import org.apache.commons.io.IOUtils;
 import org.geotools.api.referencing.crs.CoordinateReferenceSystem;
 import org.geotools.api.referencing.operation.MathTransform;
 import org.geotools.geometry.jts.JTS;
@@ -45,6 +44,8 @@ import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -56,6 +57,10 @@ import java.util.concurrent.atomic.AtomicLong;
 
 
 public class Assistant {
+
+    /** SLF4J logger for this class. */
+    private static final Logger LOGGER = LoggerFactory.getLogger(Assistant.class);
+
 
     public WKTReader wktReader = null;             //Parses a geometry in Well-Known Text format to a Geometry representation.
 
@@ -161,7 +166,7 @@ public class Assistant {
     public void notifyProgress(int numRec) {
 
         if (numRec % 1000 == 0)
-            System.out.print(this.getGMTime() + " " + Thread.currentThread().getName() + " Processed " + numRec + " entities..." + "\r");
+            LOGGER.debug("Processed {} entities...", numRec);
     }
 
 
@@ -184,16 +189,16 @@ public class Assistant {
 
         String msg = "";
         if (currentConfig.runtime.equalsIgnoreCase("JVM")) {
-            msg += this.getGMTime() + " Thread " + Thread.currentThread().getName() + " completed successfully in " + dt + " ms. " + (numRec - rejectedRec) + " entities transformed into " + numTriples + " triples and exported to " + serialization + " file: " + outputFile + ".";
+            msg += "Completed successfully in " + dt + " ms. " + (numRec - rejectedRec) + " entities transformed into " + numTriples + " triples and exported to " + serialization + " file: " + outputFile + ".";
         } else if (currentConfig.runtime.equalsIgnoreCase("SPARK")) {
-            msg += this.getGMTime() + " Worker " + partition_index + " completed successfully in " + dt + " ms. " + (numRec - rejectedRec) + " entities transformed into " + numTriples + " triples and exported to " + serialization + " file: " + outputFile + ".";
+            msg += "Worker " + partition_index + " completed successfully in " + dt + " ms. " + (numRec - rejectedRec) + " entities transformed into " + numTriples + " triples and exported to " + serialization + " file: " + outputFile + ".";
         }
 
         if (rejectedRec > 0)
             msg += " " + rejectedRec + " input entities were excluded from transformation due to specified filters or invalid geometries.";
 
         msg += " " + printMBR(mbr);   //Include information on spatial extent (if available).
-        System.out.println(msg);
+        LOGGER.info(msg);
 
         //Metadata regarding execution of this process
         Map<String, Object> execStatistics = new HashMap<>();
@@ -228,7 +233,7 @@ public class Assistant {
             ObjectMapper mapper = new ObjectMapper();
             mapper.writeValue(new File(FilenameUtils.removeExtension(outputFile) + "_metadata.json"), allStats);
         } catch (Exception e) {
-            e.printStackTrace();
+            LOGGER.error("Cannot write the file with execution metadata.", e);
         }
     }
 
@@ -237,9 +242,8 @@ public class Assistant {
      * Removes a given directory and all its contents. Used for removing intermediate files created during transformation.
      *
      * @param path The path to the directory.
-     * @return The path to a temporary directory that holds intermediate files.
      */
-    public String removeDirectory(String path) {
+    public void removeDirectory(String path) {
         File f = new File(path);
 
         if (f.isDirectory()) {
@@ -258,7 +262,6 @@ public class Assistant {
             }
         }
 
-        return path;
     }
 
     /**
@@ -343,10 +346,11 @@ public class Assistant {
             //Update the MBR of all geometries processed so far
             //updateMBR(o);
         } catch (Exception e) {
-            e.printStackTrace();
+            LOGGER.error("Cannot transform the WKT geometry.", e);
         }
 
-        return o.toText();     //Get transformed WKT representation	
+        assert o != null;
+        return o.toText();     //Get transformed WKT representation
     }
 
 
@@ -373,7 +377,7 @@ public class Assistant {
                 g = JTS.transform(g, transform);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            LOGGER.error("Cannot reproject the geometry into WGS84.", e);
         }
 
         return g;
@@ -396,7 +400,7 @@ public class Assistant {
             //Update the MBR of all geometries processed so far
             //updateMBR(g);
         } catch (Exception e) {
-            e.printStackTrace();
+            LOGGER.error("Cannot parse the WKT geometry.", e);
         }
 
         return g;     //Return geometry
@@ -504,9 +508,10 @@ public class Assistant {
             byte[] bytes = (featureSource + id).getBytes(StandardCharsets.UTF_8);
             uuid = UUID.nameUUIDFromBytes(bytes);
         } catch (Exception e) {
-            e.printStackTrace();
+            LOGGER.error("Cannot generate a UUID for feature source {}.", featureSource, e);
         }
 
+        assert uuid != null;
         return uuid.toString();
     }
 
@@ -525,9 +530,10 @@ public class Assistant {
             byte[] bytes = id.getBytes(StandardCharsets.UTF_8);     //UUIDs generated by hashing over the original identifier
             uuid = UUID.nameUUIDFromBytes(bytes);
         } catch (Exception e) {
-            e.printStackTrace();
+            LOGGER.error("Cannot generate a UUID for {}.", id, e);
         }
 
+        assert uuid != null;
         return uuid.toString();
     }
 
@@ -607,7 +613,7 @@ public class Assistant {
             method = this.getClass().getDeclaredMethod(methodName, params);
             res = method.invoke(this, args);        //Result of the method should be cast to a data type by the caller
         } catch (SecurityException | NoSuchMethodException | IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
-            e.printStackTrace();
+            LOGGER.error("Cannot invoke method " + methodName + " at runtime.", e);
         }
 
         return res;

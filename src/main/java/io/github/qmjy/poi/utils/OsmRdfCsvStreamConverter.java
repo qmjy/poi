@@ -26,12 +26,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.logging.Level;
-import java.util.Properties;
+import java.util.*;
 
 import org.apache.commons.io.FilenameUtils;
 import org.apache.jena.graph.Triple;
@@ -43,6 +38,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.github.qmjy.poi.osm.OSMRecord;
 import org.geotools.api.referencing.operation.MathTransform;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -55,15 +52,19 @@ import org.geotools.api.referencing.operation.MathTransform;
  */
 public class OsmRdfCsvStreamConverter implements Converter {
 
+    /** SLF4J logger for this class. */
+    private static final Logger LOGGER = LoggerFactory.getLogger(OsmRdfCsvStreamConverter.class);
+
+
     private static Configuration currentConfig;
 
-    private List<Triple> results = new ArrayList<>();       //A collection of generated triples
+    private final List<Triple> results = new ArrayList<>();       //A collection of generated triples
 
-    private TripleGenerator myGenerator;                    //Generator of triples
-    private Assistant myAssistant;                            //Performs auxiliary operations (geometry transformations, auto-generation of UUIDs, etc.)
+    private final TripleGenerator myGenerator;                    //Generator of triples
+    private final Assistant myAssistant;                            //Performs auxiliary operations (geometry transformations, auto-generation of UUIDs, etc.)
 
     //Used in performance metrics
-    private long t_start;
+    private final long t_start;
     private long dt;
     private int numRec;            //Number of entities (records) in input dataset
     private int rejectedRec;       //Number of rejected entities (records) from input dataset after filtering
@@ -71,14 +72,13 @@ public class OsmRdfCsvStreamConverter implements Converter {
 
     private BufferedWriter csvWriter = null;
     private SqliteWriter sqliteWriter = null;      //CAUTION! Optional writer that stores the very same records directly into an SQLite database file (*.poi)
-    private OutputStream outFile = null;
-    private StreamRDF stream;
+    private final StreamRDF stream;
 
     ObjectMapper mapperObj;
 
     //Attribute Map
-    private HashMap<String, String> tagMap = new HashMap<>();
-    private ArrayList<String> cols = new ArrayList<String>();
+    private final HashMap<String, String> tagMap = new HashMap<>();
+    private final ArrayList<String> cols = new ArrayList<String>();
 
     public void ReadAttrMappingFile(Configuration config) {
 
@@ -93,12 +93,12 @@ public class OsmRdfCsvStreamConverter implements Converter {
                 cols.add(entry.getKey().toString());
                 String[] value_parts = entry.getValue().toString().replace("\"", "").trim().split(",");
 
-                for (int i = 0; i < value_parts.length; i++) {
-                    tagMap.put(value_parts[i].trim(), entry.getKey().toString());
+                for (String valuePart : value_parts) {
+                    tagMap.put(valuePart.trim(), entry.getKey().toString());
                 }
             }
         } catch (IOException io) {
-            System.out.println(Level.WARNING + " Problems loading configuration file: " + io);
+            LOGGER.error("Problems loading configuration file.", io);
         }
     }
 
@@ -137,6 +137,7 @@ public class OsmRdfCsvStreamConverter implements Converter {
         rejectedRec = 0;
         numTriples = 0;
 
+        OutputStream outFile = null;
         try {
             outFile = new FileOutputStream(outputFile);
         } catch (FileNotFoundException e) {
@@ -144,19 +145,21 @@ public class OsmRdfCsvStreamConverter implements Converter {
         }
 
         //******************************************************************
-        //Specify the output .CSV file that will collect the resulting tuples after extraction from OSM
-        try {
-            csvWriter = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(FilenameUtils.removeExtension(outputFile) + ".csv"), StandardCharsets.UTF_8));
-            csvWriter.write(Constants.OUTPUT_CSV_HEADER + "|" + String.join("|", cols) + "|" + Constants.OTHER_TAGS_COLUMN);   //Custom header specified in Constants
-            csvWriter.newLine();
-        } catch (Exception e) {
-            ExceptionHandler.abort(e, "Output CSV file not specified correctly.");
+        //Specify the output .CSV file that will collect the resulting tuples after extraction from OSM (if requested)
+        if (currentConfig.isCsvOutput()) {
+            try {
+                csvWriter = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(FilenameUtils.removeExtension(outputFile) + ".csv"), StandardCharsets.UTF_8));
+                csvWriter.write(Constants.OUTPUT_CSV_HEADER + "|" + String.join("|", cols) + "|" + Constants.OTHER_TAGS_COLUMN);   //Custom header specified in Constants
+                csvWriter.newLine();
+            } catch (Exception e) {
+                ExceptionHandler.abort(e, "Output CSV file not specified correctly.");
+            }
         }
         //******************************************************************
 
         //******************************************************************
         //CAUTION! Optionally, the very same records are also written directly into an SQLite database file (with a .poi suffix)
-        if (currentConfig.sqliteOutput) {
+        if (currentConfig.isSqliteOutput()) {
             try {
                 sqliteWriter = new SqliteWriter(SqliteWriter.dbFilePath(outputFile), SqliteWriter.buildHeaders(cols));
             } catch (Exception e) {
@@ -229,7 +232,7 @@ public class OsmRdfCsvStreamConverter implements Converter {
             }
 
             //Tags to be processed as attribute values
-            Map tags = rs.getTagKeyValue();
+            Map<String, String> tags = rs.getTagKeyValue();
             Map<String, String> attrValues = new HashMap<String, String>(rs.getTagKeyValue());
 
             //Include standard attributes for OSM identifier, name, and type
@@ -248,10 +251,9 @@ public class OsmRdfCsvStreamConverter implements Converter {
                 //CAUTION! Only used for .CSV output
                 category = (rs.getCategory().contains("_")) ? rs.getCategory().replace("_", Constants.REGISTRY_CSV_DELIMITER) : rs.getCategory() + Constants.REGISTRY_CSV_DELIMITER;
 
-                if (currentConfig.attrCategory != null)                //Attribute to be used in the Registry as well
-                    attrValues.put(currentConfig.attrCategory, rs.getCategory());
-                else
-                    attrValues.put("OSM_Category", rs.getCategory());  //Ad-hoc name for this extra attribute
+                //Attribute to be used in the Registry as well
+                //Ad-hoc name for this extra attribute
+                attrValues.put(Objects.requireNonNullElse(currentConfig.attrCategory, "OSM_Category"), rs.getCategory());
             } else {
                 rejectedRec++;
                 return;          //CAUTION! Do not proceed to transform unless this feature complies with the filtering tags specified by the user
@@ -268,37 +270,39 @@ public class OsmRdfCsvStreamConverter implements Converter {
             outArr.add(Integer.toString(targetSRID));
             outArr.add(rs.getGeometry().toText());
 
-            Map tagMapRec = new HashMap<String, String>();
-            for (int i = 0; i < cols.size(); i++) {
-                tagMapRec.put(cols.get(i), "");
+            Map<String, String> tagMapRec = new HashMap<>();
+            for (String col : cols) {
+                tagMapRec.put(col, "");
             }
 
             for (Map.Entry<String, String> entry : tagMap.entrySet()) {
                 String key = entry.getKey();
                 String value = entry.getValue();
 
-                String tagFieldValue = tags.getOrDefault(key, "").toString();
-                String existingValue = tagMapRec.get(value).toString();
+                String tagFieldValue = tags.getOrDefault(key, "");
+                String existingValue = tagMapRec.get(value);
 
-                if (existingValue == "") {
+                if (Objects.equals(existingValue, "")) {
                     tagMapRec.put(value, tagFieldValue);
                 } else {
-                    if (tagFieldValue != "")
+                    if (!Objects.equals(tagFieldValue, ""))
                         tagMapRec.put(value, existingValue + ";" + tagFieldValue);
                 }
 
                 tags.remove(key);
             }
 
-            for (int i = 0; i < cols.size(); i++) {
-                outArr.add(formatString(tagMapRec.get(cols.get(i)).toString()));
+            for (String col : cols) {
+                outArr.add(formatString(tagMapRec.get(col)));
             }
 
             String othertags = formatString(mapperObj.writeValueAsString(rs.getTagKeyValue()));
             outArr.add(othertags);
 
-            csvWriter.write(String.join("|", outArr));
-            csvWriter.newLine();
+            if (csvWriter != null) {
+                csvWriter.write(String.join("|", outArr));
+                csvWriter.newLine();
+            }
 
             //CAUTION! Store the very same record directly into the SQLite database file as well (if requested)
             if (sqliteWriter != null)
@@ -316,7 +320,7 @@ public class OsmRdfCsvStreamConverter implements Converter {
             }
 
         } catch (Exception e) {
-            System.out.println("Problem at element with OSM id: " + rs.getID() + ". Excluded from transformation.");
+            LOGGER.warn("Problem at element with OSM id: {}. Excluded from transformation.", rs.getID());
         } finally {
             collectTriples();     //Dump any pending results into output file
         }
@@ -365,7 +369,7 @@ public class OsmRdfCsvStreamConverter implements Converter {
         if (sqliteWriter != null) {
             sqliteWriter.close();
             if (sqliteWriter.getNumInserted() > 0)
-                System.out.println(myAssistant.getGMTime() + " " + sqliteWriter.getNumInserted() + " records stored into SQLite database file: " + sqliteWriter.getDbFile());
+                LOGGER.info("{} records stored into SQLite database file: {}", sqliteWriter.getNumInserted(), sqliteWriter.getDbFile());
         }
         //******************************************************************
 

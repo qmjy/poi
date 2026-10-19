@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logging configuration for the POI extractor (SLF4J 2.x + Logback).
+
+  Overridable at runtime without touching this file:
+    -DLOG_DIR=/path/to/logs   directory that collects the log files (default: ./logs)
+    -DLOG_LEVEL=DEBUG         level of the project loggers (default: INFO)
+
+  Console output is kept for interactive use, while the same events are also
+  appended to a size/time based rolling file so that long extractions can be
+  reviewed afterwards.
+-->
+<configuration>
+
+    <property name="LOG_DIR" value="${LOG_DIR:-logs}"/>
+    <property name="LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/poi.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/poi.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>20MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- Application loggers: level controlled by -DLOG_LEVEL (default INFO) -->
+    <logger name="io.github.qmjy.poi" level="${LOG_LEVEL:-INFO}"/>
+
+    <!-- Third-party libraries: keep the console readable, their DEBUG output is very verbose -->
+    <logger name="org.geotools" level="WARN"/>
+    <logger name="org.apache.jena" level="WARN"/>
+    <logger name="crosby.binary" level="WARN"/>
+    <logger name="org.mapdb" level="WARN"/>
+    <logger name="org.apache.commons" level="WARN"/>
+    <logger name="org.xerial" level="WARN"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+
+</configuration>

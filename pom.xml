@@ -19,6 +19,9 @@
         <maven.compiler.target>21</maven.compiler.target>
         <geotools.version>34.0</geotools.version>
         <jena.version>3.2.0</jena.version>
+        <!-- Logging: SLF4J 2.x facade + Logback backend -->
+        <slf4j.version>2.0.19</slf4j.version>
+        <logback.version>1.6.5</logback.version>
     </properties>
 
     <repositories>
@@ -114,6 +117,13 @@
             <groupId>org.openstreetmap.osmosis</groupId>
             <artifactId>osmosis-pbf</artifactId>
             <version>0.48.3</version>
+            <exclusions>
+                <!-- Route commons-logging calls through SLF4J instead (see jcl-over-slf4j below) -->
+                <exclusion>
+                    <groupId>commons-logging</groupId>
+                    <artifactId>commons-logging</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- osm.pbf提取POI需要依赖 -->
@@ -130,10 +140,24 @@
             <version>3.44.1.0</version>
         </dependency>
 
+        <!-- Logging: SLF4J facade with Logback as the implementation (console + rolling file) -->
         <dependency>
             <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-simple</artifactId>
-            <version>1.7.32</version>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>${logback.version}</version>
+        </dependency>
+
+        <!-- Bridge commons-logging (used by transitive libraries) to SLF4J -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>jcl-over-slf4j</artifactId>
+            <version>${slf4j.version}</version>
         </dependency>
     </dependencies>
 

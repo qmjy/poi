@@ -36,6 +36,8 @@ import javax.xml.parsers.SAXParserFactory;
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -48,15 +50,19 @@ import java.util.*;
  */
 public class OsmXmlParser extends DefaultHandler {
 
+    /** SLF4J logger for this class. */
+    private static final Logger LOGGER = LoggerFactory.getLogger(OsmXmlParser.class);
+
+
     Converter myConverter;
     Assistant myAssistant;
     ValueChecker myChecker;
     private MathTransform reproject = null;
     int sourceSRID;                       //Source CRS according to EPSG
     int targetSRID;                       //Target CRS according to EPSG
-    private Configuration currentConfig;  //User-specified configuration settings
-    private String inputFile;             //Input OSM XML file
-    private String outputFile;            //Output RDF file
+    private final Configuration currentConfig;  //User-specified configuration settings
+    private final String inputFile;             //Input OSM XML file
+    private final String outputFile;            //Output RDF file
 
     private boolean keepUnnamed = true;        //Controls whether unnamed entities will be transformed
     private boolean closedRings2Polygons = false;    //Controls whether closed rings (i.e., first vertex coincides with the last) will be converted to polygons
@@ -69,7 +75,7 @@ public class OsmXmlParser extends DefaultHandler {
     long numRelations;
     long numNamedEntities;
 
-    private GeometryFactory geometryFactory = new GeometryFactory();
+    private final GeometryFactory geometryFactory = new GeometryFactory();
 
     private OSMRecordBuilder recBuilder;                   //Creates OSM records with all spatial and thematic information extracted from OSM elements
 
@@ -171,20 +177,20 @@ public class OsmXmlParser extends DefaultHandler {
             recBuilder.nodeIndex = new OSMMemoryIndex();
             recBuilder.wayIndex = new OSMMemoryIndex();
             recBuilder.relationIndex = new OSMMemoryIndex();
-            System.out.println("Building in-memory indices over OSM elements...");
+            LOGGER.info("Building in-memory indices over OSM elements...");
         } else {                                               //For larger OSM files, resort to disk-based indexing of their referenced elements
             //OPTION #2: Disk-based structures for indexing
             recBuilder.nodeIndex = new OSMDiskIndex(currentConfig.tmpDir, "nodeIndex");
             recBuilder.wayIndex = new OSMDiskIndex(currentConfig.tmpDir, "wayIndex");
             recBuilder.relationIndex = new OSMDiskIndex(currentConfig.tmpDir, "relationIndex");
-            System.out.println("Building disk-based indices over OSM elements...");
+            LOGGER.info("Building disk-based indices over OSM elements...");
         }
 
         //This list will hold OSM relations that depend on other relations, so these must be checked once the entire OSM file is exhausted.
         recBuilder.incompleteRelations = new ArrayList<>();
 
         //Invoke XSL transformation against input OSM XML file
-        System.out.println("Calling parser for OSM XML file...");
+        LOGGER.info("Calling parser for OSM XML file...");
         SAXParserFactory factory = SAXParserFactory.newInstance();
         try {
             //Preliminary INDEXING phase: first scan of OSM relations to build the required index structures
@@ -194,11 +200,11 @@ public class OsmXmlParser extends DefaultHandler {
             tmpNodeIndex = new HashMap<>();          //These temporary containers are used to hold references for each OSM element examined; they MUST be purged before the next element is examined
             tmpWayIndex = new HashMap<>();
             tmpRelationIndex = new HashMap<>();
-            System.out.println("Scanning OSM relations to identify indexed OSM elements...");
+            LOGGER.info("Scanning OSM relations to identify indexed OSM elements...");
             SAXParser parser = factory.newSAXParser();
             parser.parse(inputFile, this);
             parser.reset();
-            System.out.println("Indexed " + recBuilder.nodeIndex.size() + " nodes, " + recBuilder.wayIndex.size() + " ways, and " + recBuilder.relationIndex.size() + " relations.");
+            LOGGER.info("Indexed " + recBuilder.nodeIndex.size() + " nodes, " + recBuilder.wayIndex.size() + " ways, and " + recBuilder.relationIndex.size() + " relations.");
 
             if (rescanRelations) {
                 //Preliminary INDEXING phase: second scan of OSM relations to build the required index structures, since relations may refer to other relations
@@ -208,11 +214,11 @@ public class OsmXmlParser extends DefaultHandler {
                 tmpNodeIndex = new HashMap<>();          //These temporary containers are used to hold references for each OSM element examined; they MUST be purged before the next element is examined
                 tmpWayIndex = new HashMap<>();
                 tmpRelationIndex = new HashMap<>();
-                System.out.println("Second scan of OSM relations to identify other referenced OSM relations...");
+                LOGGER.info("Second scan of OSM relations to identify other referenced OSM relations...");
                 parser = factory.newSAXParser();
                 parser.parse(inputFile, this);
                 parser.reset();
-                System.out.println("Indexed " + recBuilder.nodeIndex.size() + " nodes, " + recBuilder.wayIndex.size() + " ways, and " + recBuilder.relationIndex.size() + " relations.");
+                LOGGER.info("Indexed " + recBuilder.nodeIndex.size() + " nodes, " + recBuilder.wayIndex.size() + " ways, and " + recBuilder.relationIndex.size() + " relations.");
             }
 
             //Preliminary INDEXING phase: only scan OSM ways to build the required index structures
@@ -222,11 +228,11 @@ public class OsmXmlParser extends DefaultHandler {
             tmpNodeIndex = new HashMap<>();          //These temporary containers are used to hold references for each OSM element examined; they MUST be purged before the next element is examined
             tmpWayIndex = new HashMap<>();
             tmpRelationIndex = new HashMap<>();
-            System.out.println("Scanning OSM ways to identify indexed OSM elements...");
+            LOGGER.info("Scanning OSM ways to identify indexed OSM elements...");
             parser = factory.newSAXParser();
             parser.parse(inputFile, this);
             parser.reset();
-            System.out.println("Indexed " + recBuilder.nodeIndex.size() + " nodes, " + recBuilder.wayIndex.size() + " ways, and " + recBuilder.relationIndex.size() + " relations.");
+            LOGGER.info("Indexed " + recBuilder.nodeIndex.size() + " nodes, " + recBuilder.wayIndex.size() + " ways, and " + recBuilder.relationIndex.size() + " relations.");
 
 //	            System.out.println("NODES:");
 //	            nodeIndex.print();
@@ -238,7 +244,7 @@ public class OsmXmlParser extends DefaultHandler {
             //PARSING phase: Take advantage of precomputed indices when parsing
             scanRelations = false;
             scanWays = false;
-            System.out.println("Starting parsing of all OSM elements...");
+            LOGGER.info("Starting parsing of all OSM elements...");
             parser = factory.newSAXParser();
             parser.parse(inputFile, this);
             parser.reset();
@@ -263,10 +269,10 @@ public class OsmXmlParser extends DefaultHandler {
                     iterator.remove();                                              //This OSM relation should not be examined again
 //	            		System.out.println("Done!");
                 } else
-                    System.out.println(" Transformation failed!");
+                    LOGGER.warn(" Transformation failed!");
             }
 
-            System.out.println("\nFinished parsing OSM relations.");
+            LOGGER.info("Finished parsing OSM relations.");
             recBuilder.nodeIndex.clear();                                            //Discard index over OSM nodes
             recBuilder.wayIndex.clear();                                            //Discard index over OSM ways
             recBuilder.relationIndex.clear();                                       //Discard index over OSM relations
@@ -317,7 +323,7 @@ public class OsmXmlParser extends DefaultHandler {
 
                 if ((!scanWays) && (!scanRelations)) {
                     if (inNode)
-                        System.out.println("\nFinished parsing OSM nodes.");
+                        LOGGER.info("Finished parsing OSM nodes.");
 
                     inWay = true;
                     inNode = false;
@@ -332,7 +338,7 @@ public class OsmXmlParser extends DefaultHandler {
 
                 if ((!scanWays) && (!scanRelations)) {
                     if (inWay)
-                        System.out.println("\nFinished parsing OSM ways.");
+                        LOGGER.info("Finished parsing OSM ways.");
 
                     inRelation = true;
                     inWay = false;
@@ -415,7 +421,7 @@ public class OsmXmlParser extends DefaultHandler {
                             Geometry geometry = recBuilder.nodeIndex.get(entry);     //get the geometry of the node with ID=entry
                             wayTmp.addNodeGeometry(geometry);             //add the node geometry in this way
                         } else
-                            System.out.println("Missing node " + entry + " in referencing way " + wayTmp.getID());
+                            LOGGER.warn("Missing node {} in referencing way {}", entry, wayTmp.getID());
                     }
                     Geometry geom = geometryFactory.buildGeometry(wayTmp.getNodeGeometries());
 
@@ -529,7 +535,7 @@ public class OsmXmlParser extends DefaultHandler {
                 myConverter.store(outputFile);
             } else    //TODO: Implement method for handling transformation using RML mappings
             {
-                System.out.println("Mode " + currentConfig.mode + " is currently not supported against OSM XML datasets.");
+                LOGGER.error("Mode {} is currently not supported against OSM XML datasets.", currentConfig.mode);
                 throw new IllegalArgumentException(Constants.INCORRECT_SETTING);
             }
 
@@ -537,10 +543,8 @@ public class OsmXmlParser extends DefaultHandler {
             ExceptionHandler.abort(e, "");
         }
 
-        System.out.println(myAssistant.getGMTime() + " Original OSM file contains: " + numNodes + " nodes, " + numWays + " ways, " + numRelations + " relations.");
+        LOGGER.info("Original OSM file contains: {} nodes, {} ways, {} relations.", numNodes, numWays, numRelations);
         if (!keepUnnamed)
-            System.out.println(" In total, " + numNamedEntities + " entities had a name and only those were given as input to transformation.");
-        else
-            System.out.println();
+            LOGGER.info("In total, {} entities had a name and only those were given as input to transformation.", numNamedEntities);
     }
 }

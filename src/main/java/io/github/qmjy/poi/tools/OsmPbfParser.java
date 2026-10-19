@@ -41,6 +41,8 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Entry point to parse OpenStreetMap (OSM) PBF (compressed) files into CSV tuples and/or RDF triples using Osmosis.
@@ -51,6 +53,10 @@ import java.util.Set;
  * @version 2.0
  */
 public class OsmPbfParser implements Sink {
+
+    /** SLF4J logger for this class. */
+    private static final Logger LOGGER = LoggerFactory.getLogger(OsmPbfParser.class);
+
 
     Converter myConverter;
     Assistant myAssistant;
@@ -63,7 +69,6 @@ public class OsmPbfParser implements Sink {
     private final String outputFile;            //Output RDF file
 
     private boolean keepUnnamed = true;        //Controls whether unnamed entities will be transformed
-    private boolean closedRings2Polygons = false;    //Controls whether closed rings (i.e., first vertex coincides with the last) will be converted to polygons
 
     OsmosisReader reader;                 //Osmosis reader for parsing the OSM PBF file
 
@@ -172,13 +177,13 @@ public class OsmPbfParser implements Sink {
             recBuilder.nodeIndex = new OSMMemoryIndex();
             recBuilder.wayIndex = new OSMMemoryIndex();
             recBuilder.relationIndex = new OSMMemoryIndex();
-            System.out.println("Building in-memory indices over OSM elements...");
+            LOGGER.info("Building in-memory indices over OSM elements...");
         } else {                                               //For larger OSM files, resort to disk-based indexing of their referenced elements
             //OPTION #2: Disk-based structures for indexing
             recBuilder.nodeIndex = new OSMDiskIndex(currentConfig.tmpDir, "nodeIndex");
             recBuilder.wayIndex = new OSMDiskIndex(currentConfig.tmpDir, "wayIndex");
             recBuilder.relationIndex = new OSMDiskIndex(currentConfig.tmpDir, "relationIndex");
-            System.out.println("Building disk-based indices over OSM elements...");
+            LOGGER.info("Building disk-based indices over OSM elements...");
         }
 
         //This list will hold OSM relations that depend on other relations, so these must be checked once the entire OSM file is exhausted.
@@ -188,30 +193,30 @@ public class OsmPbfParser implements Sink {
             //Preliminary INDEXING phase: first scan of OSM relations to build the required index structures
             scanRelations = true;
             scanWays = false;
-            System.out.println("Scanning OSM relations to identify indexed OSM elements...");
+            LOGGER.info("Scanning OSM relations to identify indexed OSM elements...");
             parse();    //Call Osmosis parser to identify OSM elements
-            System.out.println("Indexed " + recBuilder.nodeIndex.size() + " nodes, " + recBuilder.wayIndex.size() + " ways, and " + recBuilder.relationIndex.size() + " relations.");
+            LOGGER.info("Indexed " + recBuilder.nodeIndex.size() + " nodes, " + recBuilder.wayIndex.size() + " ways, and " + recBuilder.relationIndex.size() + " relations.");
 
             if (rescanRelations) {
                 //Preliminary INDEXING phase: second scan of OSM relations to build the required index structures, since relations may refer to other relations
                 scanRelations = true;
                 scanWays = false;
-                System.out.println("Second scan of OSM relations to identify other referenced OSM relations...");
+                LOGGER.info("Second scan of OSM relations to identify other referenced OSM relations...");
                 parse();    //Call Osmosis parser to identify OSM elements
-                System.out.println("Indexed " + recBuilder.nodeIndex.size() + " nodes, " + recBuilder.wayIndex.size() + " ways, and " + recBuilder.relationIndex.size() + " relations.");
+                LOGGER.info("Indexed " + recBuilder.nodeIndex.size() + " nodes, " + recBuilder.wayIndex.size() + " ways, and " + recBuilder.relationIndex.size() + " relations.");
             }
 
             //Preliminary INDEXING phase: only scan OSM ways to build the required index structures
             scanWays = true;
             scanRelations = false;
-            System.out.println("Scanning OSM ways to identify indexed OSM elements...");
+            LOGGER.info("Scanning OSM ways to identify indexed OSM elements...");
             parse();    //Call Osmosis parser to identify OSM elements
-            System.out.println("Indexed " + recBuilder.nodeIndex.size() + " nodes, " + recBuilder.wayIndex.size() + " ways, and " + recBuilder.relationIndex.size() + " relations.");
+            LOGGER.info("Indexed " + recBuilder.nodeIndex.size() + " nodes, " + recBuilder.wayIndex.size() + " ways, and " + recBuilder.relationIndex.size() + " relations.");
 
             //PARSING phase: Take advantage of precomputed indices when parsing
             scanRelations = false;
             scanWays = false;
-            System.out.println("Starting parsing of all OSM elements...");
+            LOGGER.info("Starting parsing of all OSM elements...");
             parse();    //Call Osmosis parser to identify OSM elements
 
             //Second pass over incomplete OSM relations, once the entire XML file has been parsed
@@ -234,11 +239,11 @@ public class OsmPbfParser implements Sink {
                     iterator.remove();                                  //This OSM relation should not be examined again
 //	            		System.out.println("Done!");
                 } else
-                    System.out.println(" Transformation failed!");
+                    LOGGER.warn(" Transformation failed!");
             }
 
             if (inRelation)
-                System.out.println("\nFinished parsing OSM relations.");
+                LOGGER.info("Finished parsing OSM relations.");
             recBuilder.nodeIndex.clear();                                            //Discard index over OSM nodes
             recBuilder.wayIndex.clear();                                            //Discard index over OSM ways
             recBuilder.relationIndex.clear();                                       //Discard index over OSM relations
@@ -345,7 +350,7 @@ public class OsmPbfParser implements Sink {
             } else {                      //Parsing of this OSM way
 
                 if (inNode)
-                    System.out.println("\nFinished parsing OSM nodes.");
+                    LOGGER.info("Finished parsing OSM nodes.");
 
                 //Mark position of the parser
                 inNode = false;
@@ -370,12 +375,14 @@ public class OsmPbfParser implements Sink {
                         Geometry geometry = recBuilder.nodeIndex.get("" + entry.getNodeId());     //get the geometry of the node with ID=entry
                         wayTmp.addNodeGeometry(geometry);                                         //add the node geometry in this way
                     } else
-                        System.out.println("Missing node " + entry.getNodeId() + " in referencing way " + wayTmp.getID());
+                        LOGGER.warn("Missing node " + entry.getNodeId() + " in referencing way " + wayTmp.getID());
                 }
                 Geometry geom = geometryFactory.buildGeometry(wayTmp.getNodeGeometries());
 
                 //Check if the beginning and ending node are the same and the number of nodes are more than 3.
                 //These nodes must be more than 3, because JTS does not allow construction of a linear ring with less than 3 points
+                //Controls whether closed rings (i.e., first vertex coincides with the last) will be converted to polygons
+                boolean closedRings2Polygons = false;
                 if ((closedRings2Polygons) && (wayTmp.getNodeGeometries().size() > 3) && wayTmp.getNodeGeometries().get(0).equals(wayTmp.getNodeGeometries().get(wayTmp.getNodeGeometries().size() - 1))) {
                     //Always construct a polygon when a linear ring is detected
                     LinearRing linear = geometryFactory.createLinearRing(geom.getCoordinates());
@@ -450,7 +457,7 @@ public class OsmPbfParser implements Sink {
             } else {    //Parsing of this OSM relation
 
                 if (inWay)
-                    System.out.println("\nFinished parsing OSM ways.");
+                    LOGGER.info("Finished parsing OSM ways.");
 
                 //Mark position of the parser
                 inNode = false;
@@ -538,7 +545,7 @@ public class OsmPbfParser implements Sink {
                 myConverter.store(outputFile);
             } else    //TODO: Implement method for handling transformation using RML mappings
             {
-                System.out.println("Mode " + currentConfig.mode + " is currently not supported against OSM XML datasets.");
+                LOGGER.error("Mode {} is currently not supported against OSM XML datasets.", currentConfig.mode);
                 throw new IllegalArgumentException(Constants.INCORRECT_SETTING);
             }
 
@@ -546,11 +553,9 @@ public class OsmPbfParser implements Sink {
             ExceptionHandler.abort(e, "");
         }
 
-        System.out.println(myAssistant.getGMTime() + " Original OSM file contains: " + numNodes + " nodes, " + numWays + " ways, " + numRelations + " relations.");
+        LOGGER.info("Original OSM file contains: {} nodes, {} ways, {} relations.", numNodes, numWays, numRelations);
         if (!keepUnnamed)
-            System.out.println(" In total, " + numNamedEntities + " entities had a name and only those were given as input to transformation.");
-        else
-            System.out.println();
+            LOGGER.info("In total, {} entities had a name and only those were given as input to transformation.", numNamedEntities);
     }
 
 }

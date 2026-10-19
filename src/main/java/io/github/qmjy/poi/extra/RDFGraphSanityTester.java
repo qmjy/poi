@@ -19,6 +19,7 @@
 package io.github.qmjy.poi.extra;
 
 import java.io.FileInputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import org.apache.commons.io.IOUtils;
@@ -36,6 +37,8 @@ import org.apache.jena.tdb.TDBFactory;
 
 import io.github.qmjy.poi.utils.Assistant;
 import io.github.qmjy.poi.utils.Constants;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Loads triples from data file(s) into a disk-based RDF graph and runs a simple sanity test with a user-specified SELECT query in SPARQL.
@@ -51,6 +54,10 @@ import io.github.qmjy.poi.utils.Constants;
  * @version 2.0 
  */
 public class RDFGraphSanityTester {
+
+    /** SLF4J logger for this class. */
+    private static final Logger LOGGER = LoggerFactory.getLogger(RDFGraphSanityTester.class);
+
 
 	  public static void main(String[] args) {
 		  if (args.length >= 4)  
@@ -77,7 +84,7 @@ public class RDFGraphSanityTester {
 			  String sparqlFile =  args[3];       //Example: ./test/conf/sanity.sparql
 			  
 			  try { 	
-				    System.out.println("Loading RDF triples to RDF graph...");
+				    LOGGER.info("Loading RDF triples to RDF graph...");
 				    
 				    //Create a temporary directory to hold intermediate data for this graph
 				    dir = myAssistant.createDirectory(tmpDir);
@@ -91,22 +98,22 @@ public class RDFGraphSanityTester {
 				    //Ingest RDF triples from each file into this graph according to the given serialization
 				    for (String rdfFile: inputFiles)
 				    {
-				    	System.out.print("Loading file " + rdfFile + "...");
+				    	LOGGER.info("Loading file {}...", rdfFile);
 				    	RDFDataMgr.read(model, rdfFile, myAssistant.getRDFLang(rdfSerialization));
-				    	System.out.println(" Completed!");
 				    }
-				    System.out.println("The resulting RDF graph contains " + model.getGraph().size() + " statements in total.");
+                  LOGGER.info("The resulting RDF graph contains {} statements in total.", model.getGraph().size());
 				    
 					//Read a valid SPARQL query from a file
 					//CAUTION! This must be a valid SELECT query that reflects the schema and properties of the RDF graph
 					FileInputStream inputStream = new FileInputStream(sparqlFile); 
-					String q = IOUtils.toString(inputStream, "UTF-8");
+					String q = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
 					 
 					Query qry = QueryFactory.create(q);
 				    QueryExecution qe = QueryExecutionFactory.create(qry, model);
 				    ResultSet rs = qe.execSelect();
 				    int n = 0;
 				    
+				    //CAUTION! These query results are the program output, not log messages, so stdout is used intentionally
 				    System.out.println("************QUERY RESULTS (NULL values are omitted)*************");
 				    
 				    //Get list of attribute names in the SELECT query
@@ -119,21 +126,20 @@ public class RDFGraphSanityTester {
 				        QuerySolution sol = rs.nextSolution();  
 	
 				        //Collect values for all attributes specified in the SPARQL query
-				        for (int i=0; i < attrList.size(); i++)
-				        {
-				        	RDFNode r = sol.get(attrList.get(i));
-				        	String s;
-			        	
-				        	if (r != null) {
-				        		if (r.isLiteral())
-				        			s = sol.getLiteral(attrList.get(i)).getString();    //String or numeric Literal
-				        		else
-				        			s = r.toString();                                   //URI
-				        	
-				        		//Print results to the standard output	
-				        		System.out.print(s + " ");    		
-				        	}
-				        }
+                        for (String string : attrList) {
+                            RDFNode r = sol.get(string);
+                            String s;
+
+                            if (r != null) {
+                                if (r.isLiteral())
+                                    s = sol.getLiteral(string).getString();    //String or numeric Literal
+                                else
+                                    s = r.toString();                                   //URI
+
+                                //Print results to the standard output
+                                System.out.print(s + " ");
+                            }
+                        }
 				        System.out.println();
 	
 				        n++;        
@@ -146,8 +152,7 @@ public class RDFGraphSanityTester {
 		      }  
 		      // Handle any errors that may have occurred
 		      catch (Exception e) {  
-		         e.printStackTrace();  
-		         System.out.println("Sanity test ended abnormally. Please check the input file(s) for errors in triple statements or in SPARQL query specifications.");
+		         LOGGER.error("Sanity test ended abnormally. Please check the input file(s) for errors in triple statements or in SPARQL query specifications.", e);
 		      } 
 			  finally {
 				  //Close the graph model
@@ -156,7 +161,7 @@ public class RDFGraphSanityTester {
 			  }
 		  }
 		    else {
-				System.err.println("Incorrect number of arguments. \nUsage: java -cp <PATH-to-TripleGeo-JAR> eu.slipo.athenarc.triplegeo.SanityTester <path-to-triples-file(s)> <triple-serialization-format> <path-to-temporary-dir> <path-to-SPARQL-query-file>"); 
+				LOGGER.error("Incorrect number of arguments. \nUsage: java -cp <PATH-to-TripleGeo-JAR> eu.slipo.athenarc.triplegeo.SanityTester <path-to-triples-file(s)> <triple-serialization-format> <path-to-temporary-dir> <path-to-SPARQL-query-file>"); 
 				System.exit(1);          //Execution terminated abnormally
 		    }
 	   }  

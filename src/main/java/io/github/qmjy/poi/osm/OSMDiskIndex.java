@@ -30,6 +30,8 @@ import org.mapdb.Serializer;
 
 import java.io.File;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Support for disk-based indexing of OSM elements.
@@ -38,6 +40,10 @@ import java.util.Map;
  * @version 2.0
  */
 public class OSMDiskIndex implements OSMIndex {
+
+    /** SLF4J logger for this class. */
+    private static final Logger LOGGER = LoggerFactory.getLogger(OSMDiskIndex.class);
+
 
     /**
      * Thread-safe WKB reader
@@ -81,7 +87,7 @@ public class OSMDiskIndex implements OSMIndex {
         if (!file.exists()) {
             boolean mkdirs = file.mkdirs();
             if (!mkdirs) {
-                System.out.println("Parent folder create failed: " + file);
+                LOGGER.error("Parent folder create failed: {}", file);
                 return;
             }
         }
@@ -138,7 +144,7 @@ public class OSMDiskIndex implements OSMIndex {
             else
                 return null;
         } catch (ParseException e) {
-            e.printStackTrace();
+            LOGGER.error("Cannot decode the indexed geometry for OSM id {}.", k, e);
             return null;
         }
     }
@@ -186,6 +192,6 @@ public class OSMDiskIndex implements OSMIndex {
      */
     public void print() {
         for (Object key : index.keySet())
-            System.out.println(key.toString());
+            LOGGER.trace(key.toString());
     }
 }

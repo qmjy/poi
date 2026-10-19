@@ -32,6 +32,8 @@ import org.locationtech.jts.geom.LinearRing;
 import org.locationtech.jts.geom.MultiPolygon;
 import org.locationtech.jts.geom.Polygon;
 import org.locationtech.jts.operation.linemerge.LineMerger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Creates OSM record objects that contain all geospatial and thematic information from OSM elements (nodes, ways, relations).
@@ -40,9 +42,13 @@ import org.locationtech.jts.operation.linemerge.LineMerger;
  */
 public class OSMRecordBuilder {
 
+    /** SLF4J logger for this class. */
+    private static final Logger LOGGER = LoggerFactory.getLogger(OSMRecordBuilder.class);
+
+
 	public static List<OSMFilter> filters;              //Parser for a file with filters for assigning categories to OSM features
 
-	private GeometryFactory geometryFactory = new GeometryFactory();
+	private final GeometryFactory geometryFactory = new GeometryFactory();
 	
 	//Using either in-memory or on-disk dictionaries for referenced OSM elements
 	public OSMIndex nodeIndex;        				//Global dictionary containing OSM IDs as keys and the corresponding geometries of OSMNode objects  
@@ -221,7 +227,7 @@ public class OSMRecordBuilder {
 	    						tmpWay = ((Polygon) tmpWay).getExteriorRing();
 	    					}
 	    					if (tmpWay.getClass() == org.locationtech.jts.geom.Point.class) {
-	    						System.out.println("OSM element " + member.getKey() + " is a point! " + tmpWay.toText());
+	    						LOGGER.debug("OSM element " + member.getKey() + " is a point! " + tmpWay.toText());
 	    					}
 	    					memberGeometries[numMembers] = (LineString) tmpWay;     //Reference to OSMWay geometry
 	    					numMembers++;
@@ -424,7 +430,7 @@ public class OSMRecordBuilder {
 			}
 
     	} catch (Exception e) {
-    		System.out.println("PROBLEM at " + rec.getID() + ". REASON: " + e.toString());
+    		LOGGER.warn("PROBLEM at " + rec.getID() + ". REASON: " + e.toString());
 //			e.printStackTrace();
 		}
 /*

@@ -15,6 +15,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Writes the extracted records directly into an SQLite database file (by convention with a ".poi" suffix).
@@ -27,6 +29,10 @@ import java.util.Map;
  * @version 2.0
  */
 public class SqliteWriter implements AutoCloseable {
+
+    /** SLF4J logger for this class. */
+    private static final Logger LOGGER = LoggerFactory.getLogger(SqliteWriter.class);
+
 
     /**
      * Number of records committed into the database in a single JDBC batch.
@@ -168,7 +174,7 @@ public class SqliteWriter implements AutoCloseable {
         if (file.exists() && (!file.delete()))
             throw new IOException("Cannot overwrite existing file: " + dbFile);
 
-        System.out.println("Storing extracted records into SQLite database file: " + dbFile);
+        LOGGER.info("Storing extracted records into SQLite database file: {}", dbFile);
 
         Class.forName("org.sqlite.JDBC");                     //Explicitly load the SQLite JDBC driver
         connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile);

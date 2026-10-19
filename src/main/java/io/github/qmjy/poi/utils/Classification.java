@@ -27,6 +27,7 @@ import java.io.FileReader;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.Reader;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -37,6 +38,8 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.system.StreamRDF;
 import org.apache.jena.riot.system.StreamRDFWriter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Parser for a (possibly multi-tier, i.e., hierarchical) classification scheme (category/subcategory/...). 
@@ -45,19 +48,23 @@ import org.apache.jena.riot.system.StreamRDFWriter;
  * @version 2.0
  */
 public class Classification {
+
+    /** SLF4J logger for this class. */
+    private static final Logger LOGGER = LoggerFactory.getLogger(Classification.class);
+
 	
 	Converter myConverter;                        //Instantiation of Converter class used in the transformation of a classification scheme to RDF
 	Assistant myAssistant;
 	EmbeddedClassifier myEmbeddedClassifier;
 	private String outputFile;                    //Output RDF file
 	private Configuration currentConfig;          //User-specified configuration settings
-	private boolean classifyByName;               //Whether data features specify their category based on its identifier in the classification scheme (false) or the actual name of the category (true). 	
+	private final boolean classifyByName;               //Whether data features specify their category based on its identifier in the classification scheme (false) or the actual name of the category (true).
 	private int numTiers;  //Number of tiers (i.e. levels in the hierarchy) identified in the given classification scheme
 	
 	//CAUTION! Hard constraints in file specifications of classification schemes
 	private static final int MAX_LEVELS = 10;     //Maximum depth (number of levels) in classification hierarchy
-	private String splitter = "#";                //Character used to separate category name from its identifier in YML specifications
-	private char indent = ' ';                    //Character used for indentation in YML file: a PAIR of such same characters is used to mark levels in the hierarchy
+	private final String splitter = "#";                //Character used to separate category name from its identifier in YML specifications
+	private final char indent = ' ';                    //Character used for indentation in YML file: a PAIR of such same characters is used to mark levels in the hierarchy
 		
 	/**
 	 * Dictionary for all categories and their parents; their name is used as the key in searching.
@@ -89,7 +96,7 @@ public class Classification {
 			this.parseCSVFile(classFile);    //Parse the CSV file
 		else
 		{
-			System.err.println("ERROR: Valid classification hierarchies must be stored in YML or CSV files.");
+			LOGGER.error("ERROR: Valid classification hierarchies must be stored in YML or CSV files.");
 			System.exit(1);                              //Issue signal to the operation system that execution terminated abnormally
 		}
 		
@@ -118,7 +125,7 @@ public class Classification {
 			this.parseCSVFile(classFile);    //Parse the CSV file
 		else
 		{
-			System.err.println("ERROR: Valid classification hierarchies must be stored in YML or CSV files.");
+			LOGGER.error("ERROR: Valid classification hierarchies must be stored in YML or CSV files.");
 			System.exit(1);                              //Issue signal to the operation system that execution terminated abnormally
 		}
 		
@@ -141,7 +148,7 @@ public class Classification {
 		int numLines = 0;
 		Category[] categoryLevels = new Category[MAX_LEVELS + 1];
 		
-		System.out.println("Starting processing of YML file with classification hierarchy...");
+		LOGGER.info("Starting processing of YML file with classification hierarchy...");
 		
 		//Parse lines from input YML file with classification hierarchy	
 		try {
@@ -154,7 +161,7 @@ public class Classification {
 				numLines++;
 				
 				// Ignore empty lines
-				if (line.trim().length() == 0) 
+				if (line.trim().isEmpty())
 					continue;
 
 				// Find indentation
@@ -170,7 +177,7 @@ public class Classification {
 				
 				// Check if for max depth is exceeded
 				if (level > MAX_LEVELS) {
-					System.err.println("ERROR: Line " +  numLines + ": Maximum depth of classification is " + MAX_LEVELS + " levels.");
+					LOGGER.error("ERROR: Line " +  numLines + ": Maximum depth of classification is " + MAX_LEVELS + " levels.");
 					System.exit(1);                              //Issue signal to the operation system that execution terminated abnormally
 				}
 				
@@ -178,7 +185,7 @@ public class Classification {
 				line = line.trim();
 				String[] parts = line.split(splitter, 2);
 				if (parts.length != 2) {
-					System.err.println("ERROR: Line " +  numLines + ": No '" + splitter + "' character found before identifier.");
+					LOGGER.error("ERROR: Line " +  numLines + ": No '" + splitter + "' character found before identifier.");
 					System.exit(1);                              //Issue signal to the operation system that execution terminated abnormally
 				}
 				
@@ -191,7 +198,7 @@ public class Classification {
 				double emdeddedScore = embedCategoryAssignment.getRight();
 				
 				//CAUTION! On-the-fly generation of a UUID for this category
-				String uuid = myAssistant.getUUID(id+name).toString();
+				String uuid = myAssistant.getUUID(id+name);
 				
 //				System.out.println("KEY:" +  id + " CATEGORY: *" + name + "*" + " -> " + embeddedCategory);
 				
@@ -204,7 +211,7 @@ public class Classification {
 					
 					// Check for identifier
 					if(id.isEmpty()) {
-						System.err.println("ERROR: Line " +  numLines + ": No identifier given for top-tier category.");
+						LOGGER.error("ERROR: Line " +  numLines + ": No identifier given for top-tier category.");
 						System.exit(1);                              //Issue signal to the operation system that execution terminated abnormally
 					}
 					
@@ -217,7 +224,7 @@ public class Classification {
 				// Get parent category
 				Category parent = categoryLevels[level - 1];
 				if (parent == null) {
-					System.err.println("ERROR: Line " +  numLines + ": Invalid indentation.");
+					LOGGER.error("ERROR: Line " +  numLines + ": Invalid indentation.");
 					System.exit(1);                              //Issue signal to the operation system that execution terminated abnormally
 				}
 				
@@ -235,13 +242,13 @@ public class Classification {
 				
 				// Check if valid
 				if (!category.hasId() && !category.hasName()) {
-					System.err.println("ERROR: Line " +  numLines + ": Classification must have both a key and a category.");
+					LOGGER.error("ERROR: Line " +  numLines + ": Classification must have both a key and a category.");
 					System.exit(1);                              //Issue signal to the operation system that execution terminated abnormally
 				}
 				
 				// An identifier must be specified after a category name at any level
 				if (category.hasName() && !category.hasId()) {
-					System.err.println("ERROR: Line " +  numLines + ": No identifier provided for a category.");
+					LOGGER.error("ERROR: Line " +  numLines + ": No identifier provided for a category.");
 					System.exit(1);                              //Issue signal to the operation system that execution terminated abnormally
 				}
 				
@@ -258,17 +265,17 @@ public class Classification {
 			
 			//Check if file is empty
 			if ((numLines == 0) || (categories.isEmpty())) {
-				System.err.println("ERROR: Classification file is empty.");
+				LOGGER.error("ERROR: Classification file is empty.");
 				System.exit(1);                              //Issue signal to the operation system that execution terminated abnormally
 			}
 		}
 		catch(Exception e) {
-			System.err.println("ERROR: Reading classification file failed!");
+			LOGGER.error("ERROR: Reading classification file failed!");
 			System.exit(1);                              //Issue signal to the operation system that execution terminated abnormally
 		}
 		
 		numTiers++;   //top-tier is level 0; so the number of levels must be incremented
-		System.out.println("Classification hierarchy reconstructed from YML file.");			
+		LOGGER.info("Classification hierarchy reconstructed from YML file.");			
 	}
 	
 	
@@ -279,7 +286,6 @@ public class Classification {
 	 * ASSUMPTION: This CSV file must use ',' as delimiter character between attributes values enclosed in double quotes ("..."). 
 	 * EXAMPLE ROW for a 3-tier classification: 1,"Food",103,"Restaurant",103005,"Chinese Restaurant".
 	 */
-	@SuppressWarnings("resource")
 	public void parseCSVFile(String classificationFile) {
 		
 		int numRecs = 1;                                     //Assuming that the CSV file has a header
@@ -289,12 +295,12 @@ public class Classification {
 		String name;
 		Pair<String, Double> embedCategoryAssignment;
 		
-		System.out.println("Starting processing of CSV file with classification hierarchy...");
+		LOGGER.info("Starting processing of CSV file with classification hierarchy...");
 		
 		//Parse lines from input CSV file with classification records	
 		try {
 			//Consume input file line by line
-			Reader in = new InputStreamReader(new FileInputStream(classificationFile), "UTF-8");
+			Reader in = new InputStreamReader(new FileInputStream(classificationFile), StandardCharsets.UTF_8);
 			CSVFormat format = CSVFormat.RFC4180.withDelimiter(',').withQuote('"').withFirstRecordAsHeader();	
 			CSVParser dataCSVParser = new CSVParser(in, format);
 			
@@ -310,7 +316,7 @@ public class Classification {
 				level = 0;
 				for (int i=0; i < rec.size(); i+=2)
 				{
-					if (rec.get(i+1).trim().length() > 0)
+					if (!rec.get(i + 1).trim().isEmpty())
 					{
 						level++;
 						
@@ -330,7 +336,7 @@ public class Classification {
 						}
 						
 						//CAUTION! On-the-fly generation of a UUID for this category
-						String uuid = myAssistant.getUUID(id+name).toString();
+						String uuid = myAssistant.getUUID(id+name);
 
 						//Handle embedded categories
 						embeddedCategory = embedCategoryAssignment.getLeft();
@@ -355,7 +361,7 @@ public class Classification {
 						
 						// An identifier must be specified after a category name at any level
 						if (category.hasName() && !category.hasId()) {
-							System.err.println("ERROR: Line " +  numRecs + ": No identifier provided for a category at level " + level + ".");
+							LOGGER.error("ERROR: Line " +  numRecs + ": No identifier provided for a category at level " + level + ".");
 							System.exit(1);                              //Issue signal to the operation system that execution terminated abnormally
 						}
 						
@@ -382,17 +388,16 @@ public class Classification {
 						
 			//Check if file is empty
 			if ((numRecs == 0) || (categories.isEmpty())) {
-				System.err.println("ERROR: Classification file is empty.");
+				LOGGER.error("ERROR: Classification file is empty.");
 				System.exit(1);                              //Issue signal to the operation system that execution terminated abnormally
 			}
 		}
 		catch(Exception e) {
-			e.printStackTrace();
-			System.err.println("ERROR: Reading classification file failed!");
+			LOGGER.error("ERROR: Reading classification file failed!", e);
 			System.exit(1);                              //Issue signal to the operation system that execution terminated abnormally
 		}
 		
-		System.out.println("Classification hierarchy reconstructed from CSV file.");			
+		LOGGER.info("Classification hierarchy reconstructed from CSV file.");			
 	}
 
 	
@@ -485,6 +490,7 @@ public class Classification {
 	 */
 	private void printDescendants(String parent_id, int level) 
 	{
+		//CAUTION! This is program output (the reconstructed hierarchy), not a log message, so stdout is used intentionally
 		//Iterate through the dictionary and type all descendants of a given item in the classification hierarchy
 		for (Category rs : categories.values()) 
 		{
@@ -510,6 +516,7 @@ public class Classification {
 	 */
 	public void printHierarchyYML()
 	{
+		//CAUTION! This is program output (the reconstructed hierarchy), not a log message, so stdout is used intentionally
 		//Iterate through the dictionary and type all descendants of a given item in the classification hierarchy
 		for (Category rs : categories.values()) 
 		{

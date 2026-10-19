@@ -29,7 +29,8 @@ import org.locationtech.jts.geom.Geometry;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.logging.Level;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -42,18 +43,20 @@ import java.util.logging.Level;
  */
 public class OsmCsvConverter implements Converter {
 
+    /** SLF4J logger for this class. */
+    private static final Logger LOGGER = LoggerFactory.getLogger(OsmCsvConverter.class);
+
+
     private static Configuration currentConfig;
 
-    private Assistant myAssistant;                            //Performs auxiliary operations (geometry transformations, auto-generation of UUIDs, etc.)
-
-    String DELIMITER = "|";
+    private final Assistant myAssistant;                            //Performs auxiliary operations (geometry transformations, auto-generation of UUIDs, etc.)
 
     //Used in performance metrics
-    private long t_start;
+    private final long t_start;
     private long dt;
     private int numRec;            //Number of entities (records) in input dataset
     private int rejectedRec;       //Number of rejected entities (records) from input dataset after filtering
-    private int numTriples;
+    private final int numTriples;
 
     public Envelope mbr;          //Minimum Bounding Rectangle (in WGS84) of all geometries handled during a given transformation process
 
@@ -66,8 +69,8 @@ public class OsmCsvConverter implements Converter {
     ObjectMapper mapperObj;
 
     //Attribute Map
-    private HashMap<String, String> tagMap = new HashMap<>();
-    private ArrayList<String> cols = new ArrayList<String>();
+    private final HashMap<String, String> tagMap = new HashMap<>();
+    private final ArrayList<String> cols = new ArrayList<String>();
 
     public void ReadAttrMappingFile(Configuration config) {
 
@@ -83,13 +86,13 @@ public class OsmCsvConverter implements Converter {
                 cols.add(entry.getKey().toString());
                 String[] value_parts = entry.getValue().toString().replace("\"", "").trim().split(",");
 
-                for (int i = 0; i < value_parts.length; i++) {
-                    tagMap.put(value_parts[i].trim(), entry.getKey().toString());
+                for (String valuePart : value_parts) {
+                    tagMap.put(valuePart.trim(), entry.getKey().toString());
                 }
             }
 
         } catch (IOException io) {
-            System.out.println(Level.WARNING + " Problems loading configuration file: " + io);
+            LOGGER.error("Problems loading configuration file.", io);
         }
     }
 
@@ -131,17 +134,19 @@ public class OsmCsvConverter implements Converter {
         rejectedRec = 0;
         numTriples = 0;
 
-        //Specify the output .CSV file that will collect the resulting tuples after extraction from OSM
-        try {
-            csvWriter = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(FilenameUtils.removeExtension(outputFile) + ".csv"), StandardCharsets.UTF_8));
-            csvWriter.write(Constants.OUTPUT_CSV_HEADER + "|" + String.join("|", cols) + "|" + Constants.OTHER_TAGS_COLUMN);   //Custom header specified in Constants
-            csvWriter.newLine();
-        } catch (Exception e) {
-            ExceptionHandler.abort(e, "Output CSV file not specified correctly.");
+        //Specify the output .CSV file that will collect the resulting tuples after extraction from OSM (if requested)
+        if (currentConfig.isCsvOutput()) {
+            try {
+                csvWriter = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(FilenameUtils.removeExtension(outputFile) + ".csv"), StandardCharsets.UTF_8));
+                csvWriter.write(Constants.OUTPUT_CSV_HEADER + "|" + String.join("|", cols) + "|" + Constants.OTHER_TAGS_COLUMN);   //Custom header specified in Constants
+                csvWriter.newLine();
+            } catch (Exception e) {
+                ExceptionHandler.abort(e, "Output CSV file not specified correctly.");
+            }
         }
 
         //CAUTION! Optionally, the very same records are also written directly into an SQLite database file (with a .poi suffix)
-        if (currentConfig.sqliteOutput) {
+        if (currentConfig.isSqliteOutput()) {
             try {
                 sqliteWriter = new SqliteWriter(SqliteWriter.dbFilePath(outputFile), SqliteWriter.buildHeaders(cols));
             } catch (Exception e) {
@@ -230,10 +235,9 @@ public class OsmCsvConverter implements Converter {
                 //CAUTION! Only used for .CSV output
                 category = (rs.getCategory().contains("_")) ? rs.getCategory().replace("_", Constants.REGISTRY_CSV_DELIMITER) : rs.getCategory() + Constants.REGISTRY_CSV_DELIMITER;
 
-                if (currentConfig.attrCategory != null)                //Attribute to be used in the Registry as well
-                    attrValues.put(currentConfig.attrCategory, rs.getCategory());
-                else
-                    attrValues.put("OSM_Category", rs.getCategory());  //Ad-hoc name for this extra attribute
+                //Attribute to be used in the Registry as well
+                //Ad-hoc name for this extra attribute
+                attrValues.put(Objects.requireNonNullElse(currentConfig.attrCategory, "OSM_Category"), rs.getCategory());
             } else {
                 rejectedRec++;
                 return;          //CAUTION! Do not proceed to transform unless this feature complies with the filtering tags specified by the user
@@ -253,9 +257,9 @@ public class OsmCsvConverter implements Converter {
             if (rs.getName() != null)
                 updateStatistics("NAME");
 
-            Map tagMapRec = new HashMap<String, String>();
-            for (int i = 0; i < cols.size(); i++) {
-                tagMapRec.put(cols.get(i), "");
+            Map<String, String> tagMapRec = new HashMap<>();
+            for (String col : cols) {
+                tagMapRec.put(col, "");
             }
 
             for (Map.Entry<String, String> entry : tagMap.entrySet()) {
@@ -263,30 +267,32 @@ public class OsmCsvConverter implements Converter {
                 String value = entry.getValue();
 
                 String tagFieldValue = tags.getOrDefault(key, "").toString();
-                String existingValue = tagMapRec.get(value).toString();
+                String existingValue = tagMapRec.get(value);
 
-                if (existingValue == "") {
+                if (existingValue.isEmpty()) {
                     tagMapRec.put(value, tagFieldValue);
                 } else {
-                    if (tagFieldValue != "")
+                    if (!Objects.equals(tagFieldValue, ""))
                         tagMapRec.put(value, existingValue + ";" + tagFieldValue);
                 }
 
                 tags.remove(key);
             }
 
-            for (int i = 0; i < cols.size(); i++) {
-                outArr.add(formatString(tagMapRec.get(cols.get(i)).toString()));
+            for (String col : cols) {
+                outArr.add(formatString(tagMapRec.get(col)));
                 // Update statistics
-                if (tagMapRec.get(cols.get(i)) != "")
-                    updateStatistics(cols.get(i));
+                if (!Objects.equals(tagMapRec.get(col), ""))
+                    updateStatistics(col);
             }
 
             String othertags = formatString(mapperObj.writeValueAsString(rs.getTagKeyValue()));
             outArr.add(othertags);
 
-            csvWriter.write(String.join("|", outArr));
-            csvWriter.newLine();
+            if (csvWriter != null) {
+                csvWriter.write(String.join("|", outArr));
+                csvWriter.newLine();
+            }
 
             //CAUTION! Store the very same record directly into the SQLite database file as well (if requested)
             if (sqliteWriter != null)
@@ -298,7 +304,7 @@ public class OsmCsvConverter implements Converter {
             }
 
         } catch (Exception e) {
-            System.out.println("Problem at element with OSM id: " + rs.getID() + ". Excluded from transformation.");
+            LOGGER.warn("Problem at element with OSM id: " + rs.getID() + ". Excluded from transformation.");
         }
 
     }
@@ -363,13 +369,17 @@ public class OsmCsvConverter implements Converter {
         if (sqliteWriter != null) {
             sqliteWriter.close();
             if (sqliteWriter.getNumInserted() > 0)
-                System.out.println(myAssistant.getGMTime() + " " + sqliteWriter.getNumInserted() + " records stored into SQLite database file: " + sqliteWriter.getDbFile());
+                LOGGER.info("{} records stored into SQLite database file: {}", sqliteWriter.getNumInserted(), sqliteWriter.getDbFile());
         }
         //******************************************************************
 
         //Measure execution time and issue statistics on the entire process
         dt = System.currentTimeMillis() - t_start;
-        myAssistant.reportStatistics(dt, numRec, rejectedRec, numTriples, "CSV", attrStatistics, getMBR(), currentConfig.mode, currentConfig.targetCRS, FilenameUtils.removeExtension(outputFile) + ".csv", 0);
+        //CAUTION! If no .csv file has been requested, statistics refer to the SQLite database file instead
+        String csvFile = FilenameUtils.removeExtension(outputFile) + ".csv";
+        String outputTarget = currentConfig.isCsvOutput() ? csvFile : SqliteWriter.dbFilePath(outputFile);
+        String outputFormat = currentConfig.isCsvOutput() ? "CSV" : "SQLite";
+        myAssistant.reportStatistics(dt, numRec, rejectedRec, numTriples, outputFormat, attrStatistics, getMBR(), currentConfig.mode, currentConfig.targetCRS, outputTarget, 0);
     }
 
 }

@@ -28,6 +28,8 @@ import java.util.Map;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Assigns a category based on the textual similarity of a given description to a collection of tags characterizing the category.
@@ -36,6 +38,10 @@ import org.apache.commons.lang3.tuple.Pair;
  * @version 2.0 
  */
 public class EmbeddedClassifier {
+
+    /** SLF4J logger for this class. */
+    private static final Logger LOGGER = LoggerFactory.getLogger(EmbeddedClassifier.class);
+
 	
 	private Map<String, List<String>> categories;            //Dictionary with the correspondence of tags to embedded categories
 	                                                         //A tag refers to a single category only; A category may contain multiple tags
@@ -49,8 +55,7 @@ public class EmbeddedClassifier {
 		try {
 			buildDefaultClassificationYML();
 		} catch (FileNotFoundException e) {
-			e.printStackTrace();
-			System.err.println("ERROR: Reading default classification file failed!");
+			LOGGER.error("ERROR: Reading default classification file failed!", e);
 			System.exit(1);                              //Issue signal to the operation system that execution terminated abnormally
 		}		
 	}
@@ -80,7 +85,7 @@ public class EmbeddedClassifier {
 				numLines++;
 				
 				// Ignore empty lines
-				if (line.trim().length() == 0) 
+				if (line.trim().isEmpty())
 					continue;
 
 				// Find indentation
@@ -110,13 +115,12 @@ public class EmbeddedClassifier {
 			
 			//Check whether file is empty or no tags have been collected
 			if ((numLines == 0) || (categories.isEmpty())) {
-				System.err.println("ERROR: Default classification file is empty.");
+				LOGGER.error("ERROR: Default classification file is empty.");
 				System.exit(1);                          //Issue signal to the operation system that execution terminated abnormally
 			}
 		}
 		catch(Exception e) {
-			e.printStackTrace();
-			System.err.println("ERROR: Reading default classification file failed!");
+			LOGGER.error("ERROR: Reading default classification file failed!", e);
 			System.exit(1);                              //Issue signal to the operation system that execution terminated abnormally
 		}
   		
@@ -201,7 +205,6 @@ public class EmbeddedClassifier {
 	  			}
 			}		
 //			System.out.println("CATEGORY-> " +  assignedCategory + " score= " + assignedScore);
-			
 			return Pair.of(assignedCategory, assignedScore);
 	}		
 }

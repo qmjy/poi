@@ -22,6 +22,8 @@ import org.locationtech.jts.geom.Geometry;
 
 import java.util.HashMap;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Support for in-memory indexing of OSM elements.
@@ -31,7 +33,11 @@ import java.util.Map;
  */
 public class OSMMemoryIndex implements OSMIndex {
 
-    private Map<String, Geometry> index;
+    /** SLF4J logger for this class. */
+    private static final Logger LOGGER = LoggerFactory.getLogger(OSMMemoryIndex.class);
+
+
+    private final Map<String, Geometry> index;
 
     /**
      * Constructor
@@ -100,6 +106,6 @@ public class OSMMemoryIndex implements OSMIndex {
      */
     public void print() {
         for (Object key : index.keySet())
-            System.out.println(key.toString());
+            LOGGER.trace(key.toString());
     }
 }
