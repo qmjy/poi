@@ -59,6 +59,8 @@ public class OsmCsvConverter implements Converter {
 
     private BufferedWriter csvWriter = null;
 
+    private SqliteWriter sqliteWriter = null;      //CAUTION! Optional writer that stores the very same records directly into an SQLite database file (*.poi)
+
     Map<String, Integer> attrStatistics;   //Statistics for each attribute
 
     ObjectMapper mapperObj;
@@ -72,7 +74,10 @@ public class OsmCsvConverter implements Converter {
         //Read Mapping Config File for extra thematic columns
         Properties properties = new Properties();
         try {
-            properties.load(new FileInputStream(config.mapping_file));
+            //CAUTION! The mapping file is designated in the embedded configuration (see application.properties)
+            try (InputStream in = config.openMappingFile()) {
+                properties.load(in);
+            }
 
             for (Map.Entry<Object, Object> entry : properties.entrySet()) {
                 cols.add(entry.getKey().toString());
@@ -129,10 +134,19 @@ public class OsmCsvConverter implements Converter {
         //Specify the output .CSV file that will collect the resulting tuples after extraction from OSM
         try {
             csvWriter = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(FilenameUtils.removeExtension(outputFile) + ".csv"), StandardCharsets.UTF_8));
-            csvWriter.write(Constants.OUTPUT_CSV_HEADER + "|" + String.join("|", cols) + "|OTHER_TAGS");   //Custom header specified in Constants
+            csvWriter.write(Constants.OUTPUT_CSV_HEADER + "|" + String.join("|", cols) + "|" + Constants.OTHER_TAGS_COLUMN);   //Custom header specified in Constants
             csvWriter.newLine();
         } catch (Exception e) {
             ExceptionHandler.abort(e, "Output CSV file not specified correctly.");
+        }
+
+        //CAUTION! Optionally, the very same records are also written directly into an SQLite database file (with a .poi suffix)
+        if (currentConfig.sqliteOutput) {
+            try {
+                sqliteWriter = new SqliteWriter(SqliteWriter.dbFilePath(outputFile), SqliteWriter.buildHeaders(cols));
+            } catch (Exception e) {
+                ExceptionHandler.abort(e, "Output SQLite file not specified correctly.");
+            }
         }
     }
 
@@ -274,6 +288,10 @@ public class OsmCsvConverter implements Converter {
             csvWriter.write(String.join("|", outArr));
             csvWriter.newLine();
 
+            //CAUTION! Store the very same record directly into the SQLite database file as well (if requested)
+            if (sqliteWriter != null)
+                sqliteWriter.insert(SqliteWriter.fromCsvRecord(outArr));
+
             //Periodically, collect RDF triples resulting from this batch and dump results into output file
             if (numRec % currentConfig.batch_size == 0) {
                 myAssistant.notifyProgress(numRec);
@@ -337,6 +355,15 @@ public class OsmCsvConverter implements Converter {
                 csvWriter.close();
         } catch (IOException e) {
             ExceptionHandler.abort(e, "An error occurred during creation of the output CSV file.");
+        }
+        //******************************************************************
+
+        //******************************************************************
+        //Finalize the SQLite database file that has collected the same records (if any)
+        if (sqliteWriter != null) {
+            sqliteWriter.close();
+            if (sqliteWriter.getNumInserted() > 0)
+                System.out.println(myAssistant.getGMTime() + " " + sqliteWriter.getNumInserted() + " records stored into SQLite database file: " + sqliteWriter.getDbFile());
         }
         //******************************************************************
 

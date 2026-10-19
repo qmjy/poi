@@ -25,6 +25,22 @@ public class Constants {
    * Default header with the attribute names of the CSV file used for output features
    */
   public static final String OUTPUT_CSV_HEADER = "ID|NAME|CATEGORY|SUBCATEGORY|LON|LAT|SRID|WKT";  
+
+  /**
+   * Name of the column that collects in JSON format all OSM tags that have not been mapped to a dedicated column.
+   * This column is appended at the end of the CSV file as well as of the SQLite database table.
+   */
+  public static final String OTHER_TAGS_COLUMN = "OTHER_TAGS";
+
+  /**
+   * Default extension of the SQLite database file where extracted records can be stored directly.
+   */
+  public static final String SQLITE_EXTENSION = ".poi";
+
+  /**
+   * Name of the table collecting the extracted records in the SQLite database file.
+   */
+  public static final String SQLITE_TABLE = "poi";
   
   /**
    * Suffix to URIs for geometries of features
@@ -94,7 +110,7 @@ public class Constants {
   
   
   //Strings appearing in user notifications and warnings
-  public static final String INCORRECT_CONFIG = "Incorrect number of arguments. A properties file with proper configuration settings is required.";
+  public static final String INCORRECT_CONFIG = "Incorrect number of arguments. Exactly two arguments are required: <filePath> <fileType>.";
   public static final String INCORRECT_CLASSIFICATION = "Incorrect number of arguments. Please specify a classification file in YML or CSV format, and a boolean value indicating whether classification hierarchy is based on category names (TRUE) or their identifiers (FALSE).";
   public static final String INCORRECT_SETTING = "Incorrect or no value set for at least one parameter. Please specify a correct value in the configuration settings.";
   public static final String WGS84_PROJECTION = "Input data is expected to be georeferenced in WGS84 (EPSG:4326).";

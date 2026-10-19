@@ -19,10 +19,10 @@
 package io.github.qmjy.poi.utils;
 
 import java.io.BufferedWriter;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
@@ -70,6 +70,7 @@ public class OsmRdfCsvStreamConverter implements Converter {
     private int numTriples;
 
     private BufferedWriter csvWriter = null;
+    private SqliteWriter sqliteWriter = null;      //CAUTION! Optional writer that stores the very same records directly into an SQLite database file (*.poi)
     private OutputStream outFile = null;
     private StreamRDF stream;
 
@@ -83,8 +84,10 @@ public class OsmRdfCsvStreamConverter implements Converter {
 
         Properties properties = new Properties();
         try {
-            //Read Mapping Config File.
-            properties.load(new FileInputStream(config.mapping_file));
+            //Read Mapping Config File; CAUTION! Its location is designated in the embedded configuration (see application.properties)
+            try (InputStream in = config.openMappingFile()) {
+                properties.load(in);
+            }
 
             for (Map.Entry<Object, Object> entry : properties.entrySet()) {
                 cols.add(entry.getKey().toString());
@@ -144,10 +147,21 @@ public class OsmRdfCsvStreamConverter implements Converter {
         //Specify the output .CSV file that will collect the resulting tuples after extraction from OSM
         try {
             csvWriter = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(FilenameUtils.removeExtension(outputFile) + ".csv"), StandardCharsets.UTF_8));
-            csvWriter.write(Constants.OUTPUT_CSV_HEADER + "|" + String.join("|", cols) + "|OTHER_TAGS");   //Custom header specified in Constants
+            csvWriter.write(Constants.OUTPUT_CSV_HEADER + "|" + String.join("|", cols) + "|" + Constants.OTHER_TAGS_COLUMN);   //Custom header specified in Constants
             csvWriter.newLine();
         } catch (Exception e) {
             ExceptionHandler.abort(e, "Output CSV file not specified correctly.");
+        }
+        //******************************************************************
+
+        //******************************************************************
+        //CAUTION! Optionally, the very same records are also written directly into an SQLite database file (with a .poi suffix)
+        if (currentConfig.sqliteOutput) {
+            try {
+                sqliteWriter = new SqliteWriter(SqliteWriter.dbFilePath(outputFile), SqliteWriter.buildHeaders(cols));
+            } catch (Exception e) {
+                ExceptionHandler.abort(e, "Output SQLite file not specified correctly.");
+            }
         }
         //******************************************************************
 
@@ -285,6 +299,10 @@ public class OsmRdfCsvStreamConverter implements Converter {
 
             csvWriter.write(String.join("|", outArr));
             csvWriter.newLine();
+
+            //CAUTION! Store the very same record directly into the SQLite database file as well (if requested)
+            if (sqliteWriter != null)
+                sqliteWriter.insert(SqliteWriter.fromCsvRecord(outArr));
             //***************************************************************************
 
             //Process all available non-spatial attributes as specified in the collected (tag,value) pairs
@@ -339,6 +357,15 @@ public class OsmRdfCsvStreamConverter implements Converter {
                 csvWriter.close();
         } catch (IOException e) {
             ExceptionHandler.abort(e, "An error occurred during creation of the output CSV file.");
+        }
+        //******************************************************************
+
+        //******************************************************************
+        //Finalize the SQLite database file that has collected the same records (if any)
+        if (sqliteWriter != null) {
+            sqliteWriter.close();
+            if (sqliteWriter.getNumInserted() > 0)
+                System.out.println(myAssistant.getGMTime() + " " + sqliteWriter.getNumInserted() + " records stored into SQLite database file: " + sqliteWriter.getDbFile());
         }
         //******************************************************************
 
