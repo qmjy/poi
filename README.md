@@ -9,10 +9,26 @@
 ## 使用方法
 可下载此数据至本地，并结合离线地图引擎[青罗](https://github.com/qmjy/Chilo)发布进行使用,使用指导请参考Chilo相关教程。
 
-## 运行程序
+## 安装启动程序
+
+假设您已经安装完成git、JDK21、Maven程序并设置好了环境变量。
 
 ```bash
-java -Xmx2g -jar ./target/poi-1.0.0-SNAPSHOT.jar <filePath> <fileType> [outputType]
+git clone git@github.com:qmjy/poi.git
+```
+
+进入到代码目录执行命令编码源码：
+
+```bash
+cd poi
+mvn clean package
+```
+
+进入编译结果目录并启动程序
+
+```bash
+cd target
+java -Xmx2g -jar poi-xxx.jar <filePath> <fileType> [outputType]
 ```
 
 | 参数 | 含义 | 示例 |
@@ -58,15 +74,6 @@ FROM poi
 WHERE CATEGORY = 'EAT/DRINK' AND SUBCATEGORY = 'RESTAURANT'
 ORDER BY NAME;
 ```
-
-```bash
-java -DLOG_LEVEL=DEBUG -DLOG_DIR=D:/logs -jar target/poi-1.0.0-SNAPSHOT.jar <filePath> <fileType> [outputType]
-```
-
-| 参数 | 含义 | 默认值 |
-| --- | --- | --- |
-| `-DLOG_LEVEL` | 项目日志级别（`TRACE`/`DEBUG`/`INFO`/`WARN`/`ERROR`） | `INFO` |
-| `-DLOG_DIR` | 日志文件所在目录 | `./logs` |
 
 ## 感谢
 本项目从[OSMWrangle](https://github.com/SLIPO-EU/OSMWrangle)继承优化而来，感谢原项目团队。
