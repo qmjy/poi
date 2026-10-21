@@ -6,9 +6,6 @@
 
 ![all poi data extract from OSM](./screenshot.png)
 
-## 使用方法
-可下载此数据至本地，并结合离线地图引擎[青罗](https://github.com/qmjy/Chilo)发布进行使用,使用指导请参考Chilo相关教程。
-
 ## 安装启动程序
 
 假设您已经安装完成git、JDK21、Maven程序并设置好了环境变量。
@@ -66,14 +63,8 @@ SQLite文件以数据集命名并以 `.poi` 结尾（例如 `hong_kong.poi`）�
 - 自动为 `ID` 与 `NAME` 建立索引，便于按标识或名称快速检索；
 - 每次执行都会重建该文件，与 `.csv` 的行为保持一致；若本次没有任何记录写入，则不会产生空文件。
 
-查询示例：
-
-```sql
-SELECT ID, NAME, CATEGORY, SUBCATEGORY, LON, LAT
-FROM poi
-WHERE CATEGORY = 'EAT/DRINK' AND SUBCATEGORY = 'RESTAURANT'
-ORDER BY NAME;
-```
+## 使用方法
+可下载此数据至本地，并结合离线地图引擎[青罗](https://github.com/qmjy/Chilo)发布进行使用,使用指导请参考Chilo相关教程。
 
 ## 感谢
 本项目从[OSMWrangle](https://github.com/SLIPO-EU/OSMWrangle)继承优化而来，感谢原项目团队。
