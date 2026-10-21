@@ -12,8 +12,7 @@
 ## 运行程序
 
 ```bash
-java -Xmx2g -cp "./target/poi-1.0.0-SNAPSHOT.jar;./target/lib/*" \
-  io.github.qmjy.poi.Extractor <filePath> <fileType> [outputType]
+java -Xmx2g -jar ./target/poi-1.0.0-SNAPSHOT.jar <filePath> <fileType> [outputType]
 ```
 
 | 参数 | 含义 | 示例 |
@@ -59,13 +58,6 @@ FROM poi
 WHERE CATEGORY = 'EAT/DRINK' AND SUBCATEGORY = 'RESTAURANT'
 ORDER BY NAME;
 ```
-
-## 日志
-
-程序使用 `SLF4J 2.x` + `Logback` 输出运行日志（配置见 `src/main/resources/logback.xml`），不再直接向控制台打印：
-
-- 控制台保留格式化日志（时间、线程、级别、类名），同时写入滚动日志文件 `logs/poi.log`（按天 + 20MB 滚动，gzip 压缩，保留 30 天，总量上限 1GB）；
-- 可通过启动参数调整，无需修改代码：
 
 ```bash
 java -DLOG_LEVEL=DEBUG -DLOG_DIR=D:/logs -jar target/poi-1.0.0-SNAPSHOT.jar <filePath> <fileType> [outputType]
