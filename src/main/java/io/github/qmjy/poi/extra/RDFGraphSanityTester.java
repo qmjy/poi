@@ -18,27 +18,19 @@
  */
 package io.github.qmjy.poi.extra;
 
-import java.io.FileInputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-
+import io.github.qmjy.poi.utils.Assistant;
 import org.apache.commons.io.IOUtils;
-import org.apache.jena.query.Dataset;
-import org.apache.jena.query.Query;
-import org.apache.jena.query.QueryExecution;
-import org.apache.jena.query.QueryExecutionFactory;
-import org.apache.jena.query.QueryFactory;
-import org.apache.jena.query.QuerySolution;
-import org.apache.jena.query.ResultSet;
+import org.apache.jena.query.*;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.riot.RDFDataMgr;
-import org.apache.jena.tdb.TDBFactory;
-
-import io.github.qmjy.poi.utils.Assistant;
-import io.github.qmjy.poi.utils.Constants;
+import org.apache.jena.tdb2.TDB2Factory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.FileInputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /**
  * Loads triples from data file(s) into a disk-based RDF graph and runs a simple sanity test with a user-specified SELECT query in SPARQL.
@@ -90,7 +82,7 @@ public class RDFGraphSanityTester {
 				    dir = myAssistant.createDirectory(tmpDir);
 			      
 					//Directory to be used for disk storage of the RDF model to be created
-				    dataset = TDBFactory.createDataset(dir) ;
+				    dataset = TDB2Factory.connectDataset(dir) ;
 				          
 				    //The RDF graph model to be used in the disk-based transformation process
 				    model = dataset.getDefaultModel() ;
@@ -155,9 +147,8 @@ public class RDFGraphSanityTester {
 		         LOGGER.error("Sanity test ended abnormally. Please check the input file(s) for errors in triple statements or in SPARQL query specifications.", e);
 		      } 
 			  finally {
-				  //Close the graph model
-				  model.close();
-				  TDBFactory.release(dataset);
+				  //Close the graph model (TDB2 requires closing the dataset, which also releases its models)
+				  dataset.close();
 			  }
 		  }
 		    else {

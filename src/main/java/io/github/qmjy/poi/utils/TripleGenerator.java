@@ -731,7 +731,7 @@ public class TripleGenerator {
 	 */
 	private void createTriple4LanguageLiteral(String s, String p, String o, String lang) { 
 		
-	    results.add(new Triple(NodeFactory.createURI(s), NodeFactory.createURI(expandNamespace(p)), NodeFactory.createLiteral(o, lang)));
+	    results.add(Triple.create(NodeFactory.createURI(s), NodeFactory.createURI(expandNamespace(p)), NodeFactory.createLiteral(o, lang, null)));
 	}
 
 	
@@ -743,7 +743,7 @@ public class TripleGenerator {
 	 */
 	private void createTriple4PlainLiteral(String s, String p, String o) { 
 		
-	    results.add(new Triple(NodeFactory.createURI(s), NodeFactory.createURI(expandNamespace(p)), NodeFactory.createLiteral(o)));
+	    results.add(Triple.create(NodeFactory.createURI(s), NodeFactory.createURI(expandNamespace(p)), NodeFactory.createLiteralString(o)));
 	}
 
 	/**
@@ -754,7 +754,7 @@ public class TripleGenerator {
 	 */
 	private void createTriple4Resource(String s, String p, String o) { 
 		
-	    results.add(new Triple(NodeFactory.createURI(s), NodeFactory.createURI(expandNamespace(p)), NodeFactory.createURI(o)));
+	    results.add(Triple.create(NodeFactory.createURI(s), NodeFactory.createURI(expandNamespace(p)), NodeFactory.createURI(o)));
 	}
 	
 
@@ -767,7 +767,7 @@ public class TripleGenerator {
 	 */
 	private void createTriple4TypedLiteral(String s, String p, String o, RDFDatatype d) { 
 
-	    results.add(new Triple(NodeFactory.createURI(s), NodeFactory.createURI(p), NodeFactory.createLiteral(o, d)));
+	    results.add(Triple.create(NodeFactory.createURI(s), NodeFactory.createURI(p), NodeFactory.createLiteral(o, null, d)));
 	}
 	
 }
